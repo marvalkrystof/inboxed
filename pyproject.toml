@@ -1,0 +1,36 @@
+[project]
+name = "inboxed"
+version = "0.1.0"
+description = "Local email classification, review, and inbox cleanup"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.13"
+dependencies = [
+  "typer>=0.15,<1", "rich>=13,<15", "pydantic>=2.10,<3", "platformdirs>=4,<5",
+  "google-api-python-client>=2,<3", "google-auth-oauthlib>=1,<2", "ollama>=0.6.3,<1",
+  "filelock>=3.16,<4",
+]
+
+[project.optional-dependencies]
+tui = ["textual>=1,<8"]
+dev = ["pytest>=8,<9", "ruff>=0.11,<1"]
+
+[project.scripts]
+inboxed = "inboxed.cli.app:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/inboxed"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config.example.toml" = "inboxed/config.example.toml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100

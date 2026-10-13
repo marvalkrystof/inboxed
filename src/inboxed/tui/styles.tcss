@@ -1,0 +1,107 @@
+/* ── App-level tab layout ─────────────────────────────────────────────────── */
+Screen { background: $surface; }
+TabbedContent { height: 1fr; }
+TabbedContent ContentSwitcher { height: 1fr; }
+TabPane { height: 1fr; padding: 0; }
+
+/* Workspace tab fills the pane */
+WorkspaceScreen { height: 1fr; layout: vertical; }
+
+/* ── Workspace toolbar ────────────────────────────────────────────────────── */
+#toolbar { height: 3; padding: 0 1; }
+#account-picker { width: 22; }
+#run-picker { width: 1fr; min-width: 20; }
+#toolbar Button { min-width: 9; width: auto; margin-left: 1; }
+
+/* ── Workspace body ───────────────────────────────────────────────────────── */
+#workspace { height: 1fr; }
+#main { width: 1fr; padding: 0 1; }
+#filters { height: 3; }
+#search { width: 2fr; }
+#class-filter, #status-filter { width: 1fr; min-width: 14; }
+#confidence-group { width: 22; height: 3; }
+#confidence-op { width: 8; }
+#confidence-val { width: 1fr; min-width: 10; }
+#selection-tools { height: 3; }
+#selection-tools Button { width: auto; min-width: 9; margin-right: 1; }
+#selection-summary { width: 1fr; padding: 1 0; }
+#toggle-detail { display: none; }
+#email-panes { height: 1fr; }
+#email-table { width: 1fr; height: 1fr; border: solid $primary; }
+#email-detail { display: none; width: 1fr; height: 1fr; padding: 0 1; border: solid $primary; }
+#selection-tools #open-detail { width: 15; min-width: 15; max-width: 15; }
+.show-detail #email-table { display: none; }
+.show-detail #email-detail { display: block; }
+#email-heading { height: auto; max-height: 6; }
+#email-warnings { height: auto; max-height: 4; color: $warning; }
+#body-label { height: 1; color: $text-muted; }
+#email-content { height: 1fr; min-height: 8; }
+
+/* ── Narrow / responsive ──────────────────────────────────────────────────── */
+.narrow #account-picker { width: 16; }
+.narrow #selection-summary { display: none; }
+.narrow #filters { height: 9; layout: grid; grid-size: 2 3; grid-rows: 3 3 3; }
+.narrow #search { column-span: 2; width: 1fr; }
+.narrow #confidence-group { column-span: 2; width: 1fr; }
+
+/* ── Jobs monitor panel ───────────────────────────────────────────────────── */
+#jobs-panel { display: none; height: auto; max-height: 8; border-top: solid $warning; background: $surface; }
+.jobs-active #jobs-panel { display: block; }
+#jobs-panel-title { height: 1; padding: 0 1; background: $warning 30%; color: $warning; text-style: bold; }
+#jobs-list { height: auto; max-height: 7; padding: 0 1; }
+.job-row { height: 1; margin-bottom: 0; }
+.job-status-text { width: 1fr; }
+.job-stop-btn { width: auto; min-width: 6; height: 1; }
+
+/* ── Activity log ─────────────────────────────────────────────────────────── */
+#log-panel { display: none; height: 10; max-height: 40%; border-top: solid $primary; }
+.log-open #log-panel { display: block; }
+#log-tools { height: 3; padding: 0 1; }
+#log-title { width: 1fr; padding-top: 1; }
+#log-tools Button { min-width: 8; width: auto; margin-left: 1; }
+#activity-log { height: 1fr; padding: 0 1; }
+
+/* ── Dialogs ──────────────────────────────────────────────────────────────── */
+Dialog { align: center middle; background: $background 70%; }
+.dialog { width: 76; max-width: 95%; height: auto; max-height: 95%; padding: 1 2; border: thick $primary; background: $surface; overflow-y: auto; }
+.dialog-title { text-style: bold; height: auto; margin-bottom: 1; }
+.dialog Label { margin-top: 1; }
+.dialog-buttons { height: 3; margin-top: 1; }
+.dialog-buttons Button { width: 1fr; }
+#connect-help { height: auto; margin-bottom: 1; }
+#connect-write-help { color: $text-muted; margin-left: 4; height: auto; margin-bottom: 1; }
+#apply-dialog { height: 80%; }
+#apply-actions { height: 1fr; min-height: 4; }
+
+/* ── Runs tab ─────────────────────────────────────────────────────────────── */
+RunsScreen { height: 1fr; layout: vertical; }
+#runs-page { height: 1fr; padding: 1 2; layout: vertical; }
+#runs-table { height: 1fr; margin: 1 0; }
+.page-title { text-style: bold; height: 3; }
+.page-actions { height: 3; }
+.page-actions Button { width: auto; min-width: 14; margin-right: 1; }
+#runs-status, #accounts-status { height: 2; padding: 0 1; }
+
+/* ── Accounts tab ─────────────────────────────────────────────────────────── */
+AccountsScreen { height: 1fr; layout: vertical; }
+#accounts-page { height: 1fr; padding: 1 2; layout: vertical; }
+#account-manager { height: 1fr; }
+#account-form-panel { width: 2fr; padding: 1; border: solid $primary; }
+#account-summary { height: auto; padding: 1; }
+#account-actions { width: 1fr; padding: 1; }
+#account-actions Button { width: 1fr; margin-bottom: 1; }
+#account-help { height: auto; padding: 1; color: $text-muted; }
+
+/* ── Settings tab ─────────────────────────────────────────────────────────── */
+SettingsScreen { height: 1fr; layout: vertical; }
+#settings-page { height: 1fr; layout: vertical; }
+#settings-content { height: 1fr; padding: 1 2; }
+.settings-heading { text-style: bold; height: 2; margin-top: 1; }
+#settings-content Label { margin-top: 1; }
+#settings-content Input, #settings-content Select { width: 1fr; max-width: 80; }
+#settings-help { color: $text-muted; margin-top: 1; height: auto; max-width: 90; }
+#settings-status { height: 2; margin-top: 1; }
+
+/* ── Run logs dialog ──────────────────────────────────────────────────────── */
+#run-logs-dialog { width: 90; max-width: 95%; height: 85%; max-height: 95%; }
+#run-logs-scroll { height: 1fr; margin: 1 0; border: solid $primary; padding: 1; overflow-y: auto; }

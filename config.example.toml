@@ -1,0 +1,174 @@
+# Copy to config.toml and edit. Relative paths resolve against this file.
+[accounts.personal]
+provider = "gmail"
+credentials_file = "credentials.json"
+
+[classifier]
+backend = "kev" # kev (Ollama SystemOne)
+endpoint = "http://localhost:11434"
+model = "qwen3.5:9b"
+timeout = 180
+
+[tags]
+backend = "ollama"
+endpoint = "http://localhost:11434"
+model = "qwen2.5:3b"
+timeout = 120
+
+# Label names receive the Inboxed/Class/ prefix automatically.
+# For automation BOTH allow_automation=true and require_approval=false are needed.
+# Thresholds need evaluation on your own emails before enabling automation.
+[[classes]]
+id = "work"
+description = "Work discussions, client requests, business projects and colleagues"
+label = "Work"
+cleanup = "none"
+
+[[classes]]
+id = "mfa_codes"
+description = "One-time codes, verification codes, multi-factor authentication (MFA) codes and sign-in security codes used to log into accounts"
+label = "MFA Codes"
+cleanup = "none"
+allow_automation = false
+require_approval = true
+
+[[classes]]
+id = "personal"
+description = "Personal correspondence with friends and family"
+label = "Personal"
+cleanup = "none"
+
+[[classes]]
+id = "receipts"
+description = "Purchase receipts, invoices, payment confirmations and order records"
+label = "Receipts"
+cleanup = "none"
+
+[[classes]]
+id = "payslips"
+description = "Payslips, salary statements and payroll documents from employers; Czech: výplatní páska, výplatní lístek, mzda"
+label = "Payslips"
+cleanup = "none"
+allow_automation = false
+require_approval = true
+
+[[classes]]
+id = "newsletters"
+description = "Editorial newsletters, news and reading digests; excludes payslips, invoices and transaction records"
+label = "Newsletters"
+cleanup = "none"
+require_approval = true
+
+[[classes]]
+id = "promotions"
+description = "Advertisements, sales offers, coupons and marketing campaigns"
+label = "Promotions"
+cleanup = "none" # Set to trash or archive when ready; requires review by default.
+
+[[classes]]
+id = "account_security"
+description = "Account security alerts, suspicious login attempts, password changes, new device sign-ins, security warnings and account recovery notifications; excludes one-time MFA codes"
+label = "Account Security"
+cleanup = "none"
+allow_automation = false
+require_approval = true
+
+[[classes]]
+id = "account_notifications"
+description = "Account registration confirmations, profile updates, subscription status changes, terms of service updates and general account-related notifications; excludes security alerts and billing records"
+label = "Account Notifications"
+cleanup = "none"
+
+[[classes]]
+id = "shipping"
+description = "Package tracking updates, shipping confirmations, delivery notifications, courier messages, pickup instructions and delivery status changes; excludes purchase receipts and invoices"
+label = "Shipping"
+cleanup = "none"
+
+[[classes]]
+id = "banking"
+description = "Bank account notifications, transaction alerts, card payments, transfers, account balances, banking statements and financial institution communications; excludes purchase receipts and payroll documents"
+label = "Banking"
+cleanup = "none"
+allow_automation = false
+require_approval = true
+
+[[classes]]
+id = "subscriptions"
+description = "Subscription renewals, upcoming charges, trial expirations, membership changes, subscription cancellations and recurring service notifications; excludes invoices and payment receipts"
+label = "Subscriptions"
+cleanup = "none"
+
+[[classes]]
+id = "appointments"
+description = "Appointment confirmations, meeting invitations, reservations for services, scheduling updates, cancellations and appointment reminders"
+label = "Appointments"
+cleanup = "none"
+
+[[classes]]
+id = "education"
+description = "University and school communications, course announcements, assignments, exam information, grades, academic administration and educational platform notifications"
+label = "Education"
+cleanup = "none"
+
+[[classes]]
+id = "travel"
+description = "Flight confirmations, hotel bookings, travel itineraries, transportation tickets, check-in instructions, reservation changes and travel-related notifications; excludes payment receipts"
+label = "Travel"
+cleanup = "none"
+
+[[classes]]
+id = "government"
+description = "Official communications from government agencies, tax authorities, public institutions, social security offices and administrative authorities; Czech: finanční úřad, ČSSZ, datová schránka, úřad"
+label = "Government"
+cleanup = "none"
+allow_automation = false
+require_approval = true
+
+[[classes]]
+id = "social"
+description = "Social media notifications, friend requests, mentions, comments, reactions, follows and activity updates from social networking platforms; excludes direct personal correspondence"
+label = "Social"
+cleanup = "none"
+
+[[classes]]
+id = "community"
+description = "Forum discussions, online community updates, mailing list conversations, group announcements and community platform notifications; excludes editorial newsletters"
+label = "Community"
+cleanup = "none"
+
+[[classes]]
+id = "system_notifications"
+description = "Automated system alerts, application notifications, server monitoring messages, CI/CD pipeline results, deployment notifications, error reports and infrastructure status updates"
+label = "System Notifications"
+cleanup = "none"
+
+[[classes]]
+id = "support"
+description = "Customer support conversations, helpdesk tickets, technical assistance, complaint responses, warranty claims and service requests; excludes general work discussions"
+label = "Support"
+cleanup = "none"
+
+[[classes]]
+id = "events"
+description = "Event invitations, conference announcements, webinar registrations, event tickets, attendance confirmations and event reminders; excludes general marketing promotions"
+label = "Events"
+cleanup = "none"
+
+[[classes]]
+id = "other"
+description = "Emails that do not fit any of the other categories"
+label = "Other"
+cleanup = "none"
+# Optional IMAP account: uncomment and set your server/user.
+# Passwords/tokens are read from environment variables, never from this file.
+# [accounts.secondary]
+# provider = "imap"
+# [accounts.secondary.options]
+# host = "imap.example.com"
+# username = "you@example.com"
+# security = "ssl" # or "starttls"; defaults to port 993 or 143 respectively
+# password_env = "INBOXED_IMAP_PASSWORD"
+# # oauth_token_env = "INBOXED_IMAP_TOKEN" # XOAUTH2; supply and refresh externally
+# # archive_folder = "Archive" # omit to discover the \\Archive special-use folder
+# # trash_folder = "Trash"     # omit to discover the \\Trash special-use folder

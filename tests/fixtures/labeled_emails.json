@@ -1,0 +1,58 @@
+[
+  {
+    "language": "en",
+    "class_id": "work",
+    "sender": "colleague@example.com",
+    "subject": "Project meeting",
+    "body": "Can you review the project proposal before our client meeting on Monday?"
+  },
+  {
+    "language": "en",
+    "class_id": "receipts",
+    "sender": "billing@example.com",
+    "subject": "Receipt for your purchase",
+    "body": "Payment received: 24 EUR. Order 1234. Please retain this receipt for your records."
+  },
+  {
+    "language": "en",
+    "class_id": "promotions",
+    "sender": "deals@example.com",
+    "subject": "50% off today",
+    "body": "Our sale ends tonight. Use code SAVE50 to get half price on all shoes. Shop now!"
+  },
+  {
+    "language": "cs",
+    "class_id": "personal",
+    "sender": "friend@example.com",
+    "subject": "Večeře v pátek",
+    "body": "Ahoj, máš v pátek čas na večeři? Rádi bychom tě pozvali k nám domů."
+  },
+  {
+    "language": "cs",
+    "class_id": "receipts",
+    "sender": "platby@example.com",
+    "subject": "Potvrzení platby",
+    "body": "Potvrzujeme přijetí platby za objednávku 1234 ve výši 600 Kč. Účtenku si uschovejte."
+  },
+  {
+    "language": "cs",
+    "class_id": "newsletters",
+    "sender": "digest@example.com",
+    "subject": "Týdenní přehled vědy",
+    "body": "Vítejte u pravidelného týdenního newsletteru. Tento týden shrnujeme objevy ve vědě a výzkumu."
+  },
+  {
+    "language": "cs",
+    "class_id": "payslips",
+    "sender": "mzdy@example.com",
+    "subject": "Výplatní páska 2026/09",
+    "body": "Dobrý den, v příloze naleznete výplatní pásku za září. Mzdová účtárna."
+  },
+  {
+    "language": "en",
+    "class_id": "payslips",
+    "sender": "payroll@example.com",
+    "subject": "Your monthly payslip",
+    "body": "Please find your salary statement for this month attached. Payroll department."
+  }
+]
