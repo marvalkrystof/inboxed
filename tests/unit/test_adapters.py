@@ -53,13 +53,13 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(message.body, "Hello & welcome")
         self.assertFalse(message.in_inbox)
 
-    def test_config_and_relative_credentials(self):
+    def test_config_and_app_wide_google_oauth(self):
         example = Path("config.example.toml")
         config = load_settings(example)
         self.assertIn("payslips", {c.id for c in config.classes})
         self.assertIn("mfa_codes", {c.id for c in config.classes})
         self.assertTrue(next(c for c in config.classes if c.id == "mfa_codes").require_approval)
-        self.assertTrue(Path(config.accounts["personal"].credentials_file).is_absolute())
+        self.assertIsNone(config.accounts["personal"].credentials_file)
         raw = settings().model_dump()
         raw["classes"].append(raw["classes"][0])
         with self.assertRaises(ValidationError):

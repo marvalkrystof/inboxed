@@ -81,7 +81,7 @@ def auth(
         return
     if entry.provider != "gmail":
         raise InboxedError("No auth command for this provider")
-    authenticate(Path(entry.credentials_file), token_path(ctx.obj.data_dir, account), write)
+    authenticate(token_path(ctx.obj.data_dir, account), write)
     console.print(f"Authenticated {account} ({'write' if write else 'read-only'} access)")
 
 

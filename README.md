@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="logo.png" alt="Inboxed logo" width="280">
+</p>
+
 # Inboxed
 
 CLI and TUI for classifying Gmail and IMAP protocol emails with local AI models (Ollama), generating topic tags, and reviewing label, archive, and trash actions before applying them.
+
+[Website](https://inboxed.fyi/) · [Privacy policy](https://inboxed.fyi/privacy/) · [Terms of use](https://inboxed.fyi/terms/)
 
 ---
 
@@ -23,7 +29,7 @@ CLI and TUI for classifying Gmail and IMAP protocol emails with local AI models 
      ```
 
 3. **Mailbox Credentials**
-   - **Gmail**: Google Cloud OAuth 2.0 Desktop app client credentials JSON file (`credentials.json`).
+   - **Gmail**: Google OAuth 2.0 Desktop client bundled with the app.
    - **IMAP**: Server host, port, username, and password (or app password).
      - *Note on IMAP tags*: Standard IMAP stores tags as keyword flags (`inboxed_...`). Webmail interfaces that organize messages strictly by folders (such as Seznam.cz) do not render IMAP keyword tags in their web UI. To route emails into visible folders on these providers, set `cleanup = "archive"` or `cleanup = "trash"` in your class configuration.
 
@@ -33,7 +39,7 @@ CLI and TUI for classifying Gmail and IMAP protocol emails with local AI models 
 
 ```sh
 # Clone and enter repo
-git clone https://github.com/your-username/inboxed.git
+git clone https://github.com/marvalkrystof/inboxed.git
 cd inboxed
 
 # Install dependencies
@@ -58,6 +64,12 @@ uv run inboxed auth --account personal --write
 ```
 
 Tokens are saved under the user data directory (`~/Library/Application Support/inboxed` on macOS).
+
+The app bundles its Google Desktop OAuth client, so individual users do not need a client JSON file
+or OAuth environment variables. Each user signs in to Google and grants Inboxed access. A Desktop
+OAuth client secret cannot be kept confidential in a desktop application. For general release,
+publish the OAuth consent screen and complete Google's verification for the Gmail scopes requested
+by the app.
 
 ### IMAP
 
@@ -205,6 +217,9 @@ timeout = 120
 ---
 
 ## Project Structure
+
+The static project website lives in [`docs/`](docs/). See [the site publishing guide](docs/README.md)
+for GitHub Pages, Cloudflare DNS, and Google OAuth branding setup for `inboxed.fyi`.
 
 ```
 src/inboxed/

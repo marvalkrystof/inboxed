@@ -1,8 +1,10 @@
 import os
 import re
+from copy import deepcopy
 from pathlib import Path
 
 from inboxed.domain.errors import ProviderError
+from inboxed.providers.gmail.oauth_client import CLIENT_CONFIG
 
 READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 WRITE_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
@@ -26,13 +28,11 @@ def save_credentials(path: Path, credentials) -> None:
     tmp.replace(path)
 
 
-def authenticate(credentials_file: Path, path: Path, write: bool = False):
+def authenticate(path: Path, write: bool = False):
     from google_auth_oauthlib.flow import InstalledAppFlow
 
-    if not credentials_file.exists():
-        raise ProviderError(f"OAuth client file missing: {credentials_file}")
-    flow = InstalledAppFlow.from_client_secrets_file(
-        str(credentials_file), [WRITE_SCOPE if write else READ_SCOPE]
+    flow = InstalledAppFlow.from_client_config(
+        deepcopy(CLIENT_CONFIG), [WRITE_SCOPE if write else READ_SCOPE]
     )
     credentials = flow.run_local_server(port=0, prompt="consent")
     save_credentials(path, credentials)

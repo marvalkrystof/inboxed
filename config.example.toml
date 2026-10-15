@@ -1,7 +1,6 @@
 # Copy to config.toml and edit. Relative paths resolve against this file.
 [accounts.personal]
 provider = "gmail"
-credentials_file = "credentials.json"
 
 [classifier]
 backend = "kev" # kev (Ollama SystemOne)

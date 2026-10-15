@@ -35,7 +35,8 @@ class StrictModel(BaseModel):
 
 class AccountConfig(StrictModel):
     provider: str = "gmail"
-    credentials_file: str = "credentials.json"
+    # Accepted for older configs; OAuth client configuration is app-wide now.
+    credentials_file: str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -269,11 +270,7 @@ def save_account_config(
             retained.append("\n" if retained and not retained[-1].endswith("\n\n") else "")
             retained.append(f"[accounts.{alias}]\n")
             retained.append(f"provider = {json.dumps(account['provider'])}\n")
-            if account["provider"] == "gmail":
-                retained.append(
-                    f"credentials_file = {json.dumps(account.get('credentials_file', 'credentials.json'))}\n"
-                )
-            else:
+            if account["provider"] != "gmail":
                 options = account.get("options", {})
                 retained.append(f"\n[accounts.{alias}.options]\n")
                 for key, value in options.items():
@@ -305,11 +302,6 @@ def save_account_config(
 def load_settings(path: Path) -> Settings:
     try:
         settings = Settings.model_validate(tomllib.loads(path.read_text()))
-        for account in settings.accounts.values():
-            p = Path(account.credentials_file).expanduser()
-            if not p.is_absolute():
-                p = path.resolve().parent / p
-            account.credentials_file = str(p)
         return settings
     except FileNotFoundError as exc:
         if path == Path("config.toml"):

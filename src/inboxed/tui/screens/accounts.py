@@ -51,13 +51,7 @@ class AccountEditScreen(Dialog):
                 disabled=bool(account),
             )
             yield Vertical(
-                Label("Google Desktop OAuth client JSON"),
-                Input(
-                    account.credentials_file
-                    if account and account.provider == "gmail"
-                    else "credentials.json",
-                    id="account-credentials",
-                ),
+                Label("Google OAuth uses the app's configured Desktop client."),
                 id="gmail-fields",
             )
             with Vertical(id="imap-fields"):
@@ -125,12 +119,7 @@ class AccountEditScreen(Dialog):
             alias = self.query_one("#account-alias", Input).value.strip()
             provider = str(self.query_one("#account-provider", Select).value)
             if provider == "gmail":
-                account = {
-                    "provider": "gmail",
-                    "credentials_file": self.query_one("#account-credentials", Input).value.strip(),
-                }
-                if not account["credentials_file"]:
-                    raise ValueError("Choose the Google OAuth client JSON path")
+                account = {"provider": "gmail"}
             else:
                 pwd_val = self.query_one("#imap-password", Input).value
                 env_val = self.query_one("#imap-password-env", Input).value.strip()
@@ -204,7 +193,7 @@ class AccountsScreen(Static):
                     yield Button("Connect selected", id="connect-account")
                     yield Button("Remove selected", id="remove-account", variant="error")
             yield Static(
-                "Gmail uses a Desktop OAuth JSON file. IMAP supports direct passwords or environment variables.",
+                "Gmail uses the app's configured Google OAuth client. IMAP supports direct passwords or environment variables.",
                 id="account-help",
                 markup=False,
             )
@@ -235,7 +224,7 @@ class AccountsScreen(Static):
         if account is None:
             summary.update("No accounts configured yet.")
         elif account.provider == "gmail":
-            summary.update(f"Gmail API · OAuth client: {account.credentials_file}")
+            summary.update("Gmail API · Google sign-in")
         else:
             summary.update(
                 f"IMAP · {account.options.get('username', '')}@{account.options.get('host', '')} · "

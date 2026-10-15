@@ -99,9 +99,7 @@ class TUIController:
                         "message": "Opening Google sign-in; waiting for browser authorization",
                     }
                 )
-            authenticate(
-                Path(account.credentials_file), token_path(self.data_dir, account_alias), write
-            )
+            authenticate(token_path(self.data_dir, account_alias), write)
         if progress:
             progress({"event": "activity", "message": f"Checking connection for {account_alias}"})
         with self.provider_session(

@@ -134,7 +134,6 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             # self.app.screen is now the AccountEditScreen modal
             self.app.screen.query_one("#account-alias").value = "secondary"
-            self.app.screen.query_one("#account-credentials").value = "/tmp/oauth-client.json"
             await pilot.click("#save-account")
             await pilot.pause()
             self.assertIn("secondary", self.controller.settings.accounts)

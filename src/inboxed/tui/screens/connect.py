@@ -37,10 +37,8 @@ class ConnectScreen(Dialog):
         account = self.accounts[alias]
         if account.provider == "gmail":
             return (
-                "Gmail opens Google sign-in in your browser. Before connecting, create a Desktop "
-                "OAuth client in Google Cloud and set this account's credentials_file in "
-                "config.toml. Current client file: "
-                f"{account.credentials_file}"
+                "Gmail opens Google sign-in in your browser. The app must be configured with its "
+                "Google Desktop OAuth client before connecting."
             )
         if account.provider == "imap":
             return (
