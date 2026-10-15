@@ -8,10 +8,12 @@ from textual.binding import Binding
 from textual.widgets import Footer, TabbedContent, TabPane
 
 from inboxed.config import load_settings
+from inboxed.domain.errors import InboxedError
 
 from .controller import TUIController
 from .messages import JobFinished, JobProgress, JobStarted
 from .screens.accounts import AccountsScreen
+from .screens.encryption import RunPasswordScreen
 from .screens.runs import RunsScreen
 from .screens.settings import SettingsScreen
 from .screens.workspace import WorkspaceScreen
@@ -54,6 +56,29 @@ class InboxedApp(App):
                 yield self.settings_screen
         yield Footer()
 
+    def on_mount(self):
+        if self.controller.repository.locked:
+            self.push_screen(
+                RunPasswordScreen(self.controller.repository, "unlock"), self._history_unlocked
+            )
+
+    def _history_unlocked(self, success):
+        if not success:
+            self.exit()
+            return
+        self.workspace.refresh_runs(open_latest=bool(self.workspace.account))
+        self.runs.refresh_rows()
+
+    async def action_quit(self):
+        if isinstance(self.screen, RunPasswordScreen) and self.screen.busy:
+            self.notify("Wait for the encryption operation to finish before quitting")
+            return
+        await super().action_quit()
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated):
+        if event.pane.id == "settings":
+            self.settings_screen.discover_models()
+
     def action_switch_tab(self, tab: str) -> None:
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab
@@ -91,7 +116,6 @@ class InboxedApp(App):
             self.call_after_refresh(ws.action_connect)
 
     # ------------------------------------------------------------------ jobs
-
 
     def start_job(self, kind: str, operation, context: dict, label: str = "") -> int:
         """Launch a background job and return its job_id."""
@@ -183,6 +207,7 @@ class InboxedApp(App):
 
     def on_unmount(self):
         self.controller.activate_run(None)
+        self.controller.repository.lock()
 
 
 def launch(config: Path, data_dir: Path):

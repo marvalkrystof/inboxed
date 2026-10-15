@@ -201,10 +201,16 @@ class WorkspaceScreen(Static):
         return not isinstance(self.app.focused, (Input, Select))
 
     def refresh_runs(self, open_latest=False):
+        if self.controller.repository.locked:
+            return
         accounts = list(self.controller.settings.accounts)
         if self.account not in accounts:
             self.account = "personal" if "personal" in accounts else next(iter(accounts), "")
-        rows = self.controller.runs(self.account)
+        try:
+            rows = self.controller.runs(self.account)
+        except InboxedError as exc:
+            self.error(str(exc))
+            return
         # Synchronizing controls must not queue another request to open a run.
         with self.prevent(Select.Changed):
             picker = self.query_one("#account-picker", Select)

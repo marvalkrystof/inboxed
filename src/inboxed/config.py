@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import tempfile
 import tomllib
 from importlib.resources import files
 from pathlib import Path
@@ -53,6 +55,28 @@ class ClassConfig(StrictModel):
         return ClassDefinition(**self.model_dump())
 
 
+def validate_local_ollama_endpoint(value: str) -> str:
+    endpoint = urlparse(value)
+    if (
+        endpoint.scheme not in ("http", "https")
+        or endpoint.hostname not in ("localhost", "127.0.0.1", "::1")
+        or endpoint.username
+        or endpoint.password
+        or endpoint.query
+        or endpoint.fragment
+    ):
+        raise ValueError("Ollama endpoint must be a local loopback URL")
+    return value
+
+
+def validate_local_ollama_model(value: str) -> str:
+    if not value.strip():
+        raise ValueError("Choose an Ollama model or enter its tag")
+    if value.casefold().endswith((":cloud", "-cloud")):
+        raise ValueError("Choose a local Ollama model, not a cloud model")
+    return value
+
+
 class ClassifierConfig(StrictModel):
     backend: Literal["kev", "laya", "ollama"] = "kev"
     device: Literal["auto", "cpu", "mps", "cuda"] = "auto"
@@ -66,115 +90,85 @@ class ClassifierConfig(StrictModel):
     @model_validator(mode="after")
     def local_ollama(self) -> "ClassifierConfig":
         if self.backend in ("ollama", "kev"):
-            endpoint = urlparse(self.endpoint)
-            if (
-                endpoint.scheme not in ("http", "https")
-                or endpoint.hostname not in ("localhost", "127.0.0.1", "::1")
-                or endpoint.username
-                or endpoint.password
-            ):
-                raise ValueError("Classifier Ollama endpoint must be a local loopback URL")
-            if self.model.endswith(":cloud"):
-                raise ValueError("Choose a local Ollama model, not a cloud model")
+            validate_local_ollama_endpoint(self.endpoint)
+            validate_local_ollama_model(self.model)
         return self
 
 
-def save_classifier_config(path: Path, classifier: ClassifierConfig) -> None:
-    """Update [classifier] while preserving other user-authored TOML sections."""
+def _toml_value(value):
+    if isinstance(value, dict):
+        return (
+            "{ "
+            + ", ".join(
+                f"{json.dumps(str(key))} = {_toml_value(item)}" for key, item in value.items()
+            )
+            + " }"
+        )
+    if isinstance(value, list):
+        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
+    if isinstance(value, (str, int, float, bool)):
+        return json.dumps(value, ensure_ascii=False)
+    raise ValueError(f"Unsupported model option type: {type(value).__name__}")
+
+
+def _save_model_sections(path: Path, updates: dict[str, dict]) -> None:
+    """Validate all changed model sections, then replace the config once."""
     path = path.expanduser().resolve()
+    temporary = None
     try:
         source = path.read_text()
         parsed = tomllib.loads(source)
-        candidate = dict(parsed)
-        candidate["classifier"] = classifier.model_dump()
-        Settings.model_validate(candidate)
-
-        lines = source.splitlines(keepends=True)
+        Settings.model_validate({**parsed, **updates})
         headers = re.compile(r"^\[{1,2}([^\]]+)\]{1,2}\s*(?:#.*)?$")
         retained = []
-        index = 0
-        while index < len(lines):
-            match = headers.match(lines[index].rstrip("\r\n"))
-            if match and (
-                match.group(1) == "classifier" or match.group(1).startswith("classifier.")
-            ):
-                index += 1
-                while index < len(lines) and not headers.match(lines[index].rstrip("\r\n")):
-                    index += 1
-                continue
-            retained.append(lines[index])
-            index += 1
-
-        def toml_value(value):
-            return json.dumps(value, ensure_ascii=False)
-
-        block = ["[classifier]\n"]
-        for key, value in classifier.model_dump().items():
-            if key == "options":
-                if value:
-                    block.append("\n[classifier.options]\n")
-                    block.extend(f"{name} = {toml_value(item)}\n" for name, item in value.items())
-            elif isinstance(value, (str, int, float, bool)):
-                block.append(f"{key} = {toml_value(value)}\n")
-        updated = "".join(block + ["\n"] + retained)
-        tomllib.loads(updated)
-        temp = path.with_name(path.name + ".tmp")
-        temp.write_text(updated)
-        temp.chmod(path.stat().st_mode & 0o777)
-        temp.replace(path)
+        skip = False
+        for line in source.splitlines(keepends=True):
+            match = headers.match(line.rstrip("\r\n"))
+            if match:
+                section = match.group(1)
+                skip = any(section == name or section.startswith(name + ".") for name in updates)
+            if not skip:
+                retained.append(line)
+        blocks = []
+        for section, config in updates.items():
+            blocks.append(f"[{section}]\n")
+            for key, value in config.items():
+                if key != "options":
+                    blocks.append(f"{key} = {_toml_value(value)}\n")
+            if config.get("options"):
+                blocks.append(f"\n[{section}.options]\n")
+                blocks.extend(
+                    f"{json.dumps(str(key))} = {_toml_value(value)}\n"
+                    for key, value in config["options"].items()
+                )
+            blocks.append("\n")
+        updated = "".join(retained).rstrip() + "\n\n" + "".join(blocks)
+        Settings.model_validate(tomllib.loads(updated))
+        fd, filename = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        temporary = Path(filename)
+        with os.fdopen(fd, "w") as handle:
+            handle.write(updated)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.chmod(path.stat().st_mode & 0o777)
+        temporary.replace(path)
     except (OSError, ValueError) as exc:
-        if isinstance(exc, InboxedError):
-            raise
-        raise InboxedError(f"Cannot update classifier configuration {path}: {exc}") from exc
+        raise InboxedError(f"Cannot update model settings: {exc}") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def save_classifier_config(path: Path, classifier: ClassifierConfig) -> None:
+    _save_model_sections(path, {"classifier": classifier.model_dump()})
 
 
 def save_tag_config(path: Path, tags: "TagConfig") -> None:
-    """Update [tags] while preserving other user-authored TOML sections."""
-    path = path.expanduser().resolve()
-    try:
-        source = path.read_text()
-        parsed = tomllib.loads(source)
-        candidate = dict(parsed)
-        candidate["tags"] = tags.model_dump()
-        Settings.model_validate(candidate)
+    _save_model_sections(path, {"tags": tags.model_dump()})
 
-        lines = source.splitlines(keepends=True)
-        headers = re.compile(r"^\[{1,2}([^\]]+)\]{1,2}\s*(?:#.*)?$")
-        retained = []
-        index = 0
-        while index < len(lines):
-            match = headers.match(lines[index].rstrip("\r\n"))
-            if match and (
-                match.group(1) == "tags" or match.group(1).startswith("tags.")
-            ):
-                index += 1
-                while index < len(lines) and not headers.match(lines[index].rstrip("\r\n")):
-                    index += 1
-                continue
-            retained.append(lines[index])
-            index += 1
 
-        def toml_value(value):
-            return json.dumps(value, ensure_ascii=False)
-
-        block = ["[tags]\n"]
-        for key, value in tags.model_dump().items():
-            if key == "options":
-                if value:
-                    block.append("\n[tags.options]\n")
-                    block.extend(f"{name} = {toml_value(item)}\n" for name, item in value.items())
-            elif isinstance(value, (str, int, float, bool)):
-                block.append(f"{key} = {toml_value(value)}\n")
-        updated = "".join(retained + ["\n"] + block)
-        tomllib.loads(updated)
-        temp = path.with_name(path.name + ".tmp")
-        temp.write_text(updated)
-        temp.chmod(path.stat().st_mode & 0o777)
-        temp.replace(path)
-    except (OSError, ValueError) as exc:
-        if isinstance(exc, InboxedError):
-            raise
-        raise InboxedError(f"Cannot update tags configuration {path}: {exc}") from exc
+def save_model_configs(path: Path, classifier: ClassifierConfig, tags: "TagConfig") -> None:
+    _save_model_sections(path, {"classifier": classifier.model_dump(), "tags": tags.model_dump()})
 
 
 class TagConfig(StrictModel):
@@ -187,16 +181,8 @@ class TagConfig(StrictModel):
     @model_validator(mode="after")
     def local_endpoint(self) -> "TagConfig":
         if self.backend == "ollama":
-            endpoint = urlparse(self.endpoint)
-            if (
-                endpoint.scheme not in ("http", "https")
-                or endpoint.hostname not in ("localhost", "127.0.0.1", "::1")
-                or endpoint.username
-                or endpoint.password
-            ):
-                raise ValueError("Ollama endpoint must be a local loopback URL")
-            if self.model.endswith(":cloud"):
-                raise ValueError("Choose a local Ollama model, not a cloud model")
+            validate_local_ollama_endpoint(self.endpoint)
+            validate_local_ollama_model(self.model)
         return self
 
 

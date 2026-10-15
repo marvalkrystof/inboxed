@@ -97,6 +97,39 @@ uv run inboxed auth --account personal --write
 
 ---
 
+## Saved run encryption
+
+In **Settings → Encrypt saved runs**, choose and confirm a password of at least 12 characters.
+This setting applies to all accounts in the selected data directory. It is off by default.
+Enabling it encrypts existing run contents and all future runs. Inboxed prompts once per TUI
+session; CLI commands that access history prompt once per command. The password and derived key
+are not saved to disk. Finish active scans or mailbox operations before changing encryption.
+
+Use **Change run password** in Settings to change the password. Turning the toggle off asks for
+the current password and decrypts the saved history. The same operations are available in the CLI:
+
+```sh
+uv run inboxed runs encrypt
+uv run inboxed runs password
+uv run inboxed runs decrypt
+```
+
+**A forgotten password cannot be recovered.** Keep it in a password manager. Losing access to
+saved runs does not affect mail stored with your provider.
+
+Run contents use authenticated Fernet encryption with a key derived from the password using
+Argon2id (64 MiB, three passes). Email previews, senders, subjects, account details, decisions,
+and configuration snapshots are encrypted. Run IDs, creation times, and encryption metadata
+remain readable. Google OAuth token files and the separate configuration file are outside this
+feature; use operating-system disk encryption to protect them as well.
+
+Enabling encryption replaces the history database without keeping a plaintext backup. Existing
+backups, JSON exports, filesystem snapshots, and previously deleted disk blocks are not encrypted
+or securely erased by this operation. Exporting a run with `--json` produces plaintext. While
+unlocked, run contents and the encryption key are available in the app's memory.
+
+---
+
 ## TUI Workspace
 
 Launch the terminal interface:
@@ -114,8 +147,27 @@ uv run --extra tui inboxed tui
   - Detail pane with on-demand full text (loads only when scrolling down or clicking the excerpt banner).
   - Background jobs monitor and live activity log.
 - **Runs (`2`)**: View historical runs and batch-delete local history.
-- **Accounts (`3`)**: Add, edit, test, and remove Gmail and IMAP accounts.
-- **Settings (`4`)**: Configure backend (`kev`, `ollama`), model name, and endpoints.
+- **Accounts (`3`)**: Add, edit, test, and remove Gmail and IMAP accounts. Removing an account also deletes all its saved runs and its local OAuth token.
+- **Settings (`4`)**: Choose installed Ollama models, edit local endpoints, and manage password encryption for saved runs.
+
+### Selecting models
+
+Open **Settings** to discover models installed in each local Ollama instance (the catalogue used
+by `ollama list`). The classifier and tag generator each have a searchable model dropdown and a
+**Refresh** button, with parameter count, quantization, and disk size shown when available.
+Each model is inspected through Ollama's `/api/show` metadata endpoint. The classification dropdown
+includes models advertising `decision`; the tag dropdown includes models advertising `completion`.
+Cloud-backed, incompatible, and unverified models are hidden. If your configured model cannot be
+used for its role, its tag is preserved in the manual field with an explanation.
+
+Install additional models with `ollama pull <tag>`, then refresh. Choose **Enter a model tag
+manually…** for a custom tag or when Ollama is offline. Each model has its own endpoint and timeout.
+Classifier models must support Ollama SystemOne; tag models use Ollama chat with JSON output.
+Metadata inspection does not load a model for inference or test output quality. Missing capability
+metadata and failed inspections remain unverified; refresh after updating Ollama or fixing a model.
+**Save settings** blocks known incompatible choices, including manually entered installed model
+names. Manual tags absent from the installed list, or entered while Ollama is offline, remain
+explicitly unverified. Both model configurations are validated and saved together.
 
 ### Key Bindings
 

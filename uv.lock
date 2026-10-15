@@ -462,6 +462,7 @@ name = "inboxed"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "filelock" },
     { name = "google-api-python-client" },
     { name = "google-auth-oauthlib" },
@@ -483,6 +484,7 @@ tui = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=46,<51" },
     { name = "filelock", specifier = ">=3.16,<4" },
     { name = "google-api-python-client", specifier = ">=2,<3" },
     { name = "google-auth-oauthlib", specifier = ">=1,<2" },

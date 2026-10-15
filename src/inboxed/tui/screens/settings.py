@@ -2,15 +2,17 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, Input, Label, Select, Static
+from textual.widgets import Button, Input, Label, Static, Switch
 
 from inboxed.config import (
     ClassifierConfig,
     TagConfig,
-    save_classifier_config,
-    save_tag_config,
+    save_model_configs,
 )
 from inboxed.domain.errors import InboxedError
+from inboxed.tui.widgets.model_picker import OllamaModelPicker
+
+from .encryption import RunPasswordScreen
 
 
 class SettingsScreen(Static):
@@ -27,75 +29,113 @@ class SettingsScreen(Static):
         with Vertical(id="settings-page"):
             with VerticalScroll(id="settings-content"):
                 yield Static("Settings", classes="page-title")
-                yield Static("Classification model", classes="settings-heading")
-                yield Label("Backend")
-                yield Select(
-                    [
-                        ("Kev (Ollama SystemOne)", "kev"),
-                    ],
-                    value="kev",
-                    allow_blank=False,
-                    id="classifier-backend",
+                yield Static("Saved run privacy", classes="settings-heading")
+                with Horizontal(id="run-encryption-control"):
+                    yield Label("Encrypt saved runs")
+                    yield Switch(self.controller.repository.encrypted, id="encrypt-runs")
+                yield Static(
+                    "Password protection for existing and future run history. Unlock once per "
+                    "session. A forgotten password cannot be recovered. Google tokens and "
+                    "configuration files are stored separately.",
+                    id="run-encryption-help",
                 )
-                yield Label("Local model tag (e.g. kev:9b-nvfp4)")
-                yield Input(config.model, id="classifier-model")
-                yield Label("Ollama local endpoint")
-                yield Input(config.endpoint, id="classifier-endpoint")
+                yield Button(
+                    "Change run password",
+                    id="change-run-password",
+                    disabled=not self.controller.repository.encrypted,
+                )
+                yield Static("Classification model", classes="settings-heading")
+                yield Static(
+                    "Organizes messages into your categories using Ollama SystemOne. "
+                    "Only models advertising the decision capability appear in the list.",
+                    classes="model-help",
+                    markup=False,
+                )
+                yield OllamaModelPicker("classifier", config.model, config.endpoint)
                 yield Label("Request timeout in seconds")
                 yield Input(str(config.timeout), type="number", id="classifier-timeout")
-                yield Static(
-                    "Kev uses Ollama's /v1/systemone endpoint and returns calibrated class "
-                    "probabilities. Set Kev's context window in Ollama (for example with "
-                    "OLLAMA_CONTEXT_LENGTH).",
-                    id="settings-help",
-                )
                 yield Static("Tag suggestion model", classes="settings-heading")
-                yield Label("Ollama chat model tag for tags (requires 'ollama pull <model>')")
-                yield Input(tags_config.model, id="tags-model")
+                yield Static(
+                    "Optional topic tags use Ollama chat with JSON output. "
+                    "Only models advertising the completion capability appear in the list.",
+                    classes="model-help",
+                    markup=False,
+                )
+                yield OllamaModelPicker("tags", tags_config.model, tags_config.endpoint)
                 yield Label("Tags request timeout in seconds")
                 yield Input(str(tags_config.timeout), type="number", id="tags-timeout")
-                yield Static("", id="settings-status", markup=False)
+            yield Static("", id="settings-status", markup=False)
             with Horizontal(classes="page-actions"):
                 yield Button("Save settings", id="settings-save", variant="primary")
 
-    def on_select_changed(self, event: Select.Changed):
-        if event.select.id != "classifier-backend" or event.value is Select.BLANK:
+    def discover_models(self):
+        for picker in self.query(OllamaModelPicker):
+            picker.discover()
+
+    def _encryption_finished(self, changed):
+        repo = self.controller.repository
+        with self.prevent(Switch.Changed):
+            self.query_one("#encrypt-runs", Switch).value = repo.encrypted
+        self.query_one("#change-run-password", Button).disabled = not repo.encrypted
+        if changed:
+            self.query_one("#settings-status", Static).update(
+                "Run history encryption enabled."
+                if repo.encrypted
+                else "Run history encryption disabled."
+            )
+
+    def on_switch_changed(self, event: Switch.Changed):
+        if event.switch.id != "encrypt-runs":
             return
-        model = self.query_one("#classifier-model", Input)
-        if event.value == "kev" and (not model.value or model.value.startswith("qwen")):
-            model.value = "kev:9b-nvfp4"
+        event.stop()
+        repo = self.controller.repository
+        if event.value == repo.encrypted:
+            return
+        mode = "enable" if event.value else "disable"
+        # The switch reflects the persisted state until the dialog succeeds.
+        with self.prevent(Switch.Changed):
+            event.switch.value = repo.encrypted
+        self.app.push_screen(RunPasswordScreen(repo, mode), self._encryption_finished)
 
     def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "change-run-password":
+            self.app.push_screen(
+                RunPasswordScreen(self.controller.repository, "change"),
+                self._encryption_finished,
+            )
+            return
         if event.button.id != "settings-save":
             return
         try:
             if self.config_path is None:
                 raise InboxedError("Open Inboxed with a config file to save settings")
             current = self.controller.settings.classifier
+            classifier_picker = self.query_one("#classifier-model-settings", OllamaModelPicker)
+            tags_picker = self.query_one("#tags-model-settings", OllamaModelPicker)
+            classifier_picker.validate_selection()
+            tags_picker.validate_selection()
             options = current.options
             config = ClassifierConfig(
-                backend=str(self.query_one("#classifier-backend", Select).value),
+                backend="kev",
                 device=current.device,
                 max_loaded=current.max_loaded,
-                endpoint=self.query_one("#classifier-endpoint", Input).value.strip(),
-                model=self.query_one("#classifier-model", Input).value.strip(),
+                endpoint=classifier_picker.endpoint,
+                model=classifier_picker.model,
                 timeout=float(self.query_one("#classifier-timeout", Input).value),
                 context_length=current.context_length,
                 options=options,
             )
-            save_classifier_config(self.config_path, config)
-            self.controller.settings.classifier = config
-            self.controller._classifier = None
-
             current_tags = self.controller.settings.tags
             tag_config = TagConfig(
                 backend=current_tags.backend,
-                endpoint=current_tags.endpoint,
-                model=self.query_one("#tags-model", Input).value.strip(),
+                endpoint=tags_picker.endpoint,
+                model=tags_picker.model,
                 timeout=float(self.query_one("#tags-timeout", Input).value),
                 options=current_tags.options,
             )
-            save_tag_config(self.config_path, tag_config)
+            save_model_configs(self.config_path, config, tag_config)
+            self.controller.settings.classifier = config
+            self.controller._classifier = None
             self.controller.settings.tags = tag_config
             self.controller._tag_generator = None
 

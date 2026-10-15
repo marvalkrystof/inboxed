@@ -158,7 +158,8 @@ class RemoveAccountScreen(Dialog):
             yield Static(f"Remove account {self.alias}?", classes="dialog-title")
             yield Static(
                 "This removes the account from config.toml and deletes its local OAuth token. "
-                "Saved runs remain in run history; reconnect the same alias if you need to apply one.",
+                "All saved runs for this account will also be deleted. "
+                "This does not delete emails from your mailbox or undo applied actions.",
                 markup=False,
             )
             with Horizontal(classes="dialog-buttons"):
@@ -277,14 +278,20 @@ class AccountsScreen(Static):
         try:
             if self.config_path is None:
                 raise InboxedError("Start the app with --config to manage account settings")
+            if self.app._jobs:
+                raise InboxedError("Wait for background jobs to finish before removing an account")
+            if alias not in load_settings(self.config_path).accounts:
+                raise InboxedError(f"Unknown account: {alias}")
+            deleted = self.controller.repository.delete_for_account(alias)
             save_account_config(self.config_path, alias, None)
             token = token_path(self.controller.data_dir, alias)
             token.unlink(missing_ok=True)
             self.controller.settings = load_settings(self.config_path)
             self.refresh_workspace_settings()
             self.refresh_accounts()
+            self.app.runs.refresh_rows()
             self.query_one("#accounts-status", Static).update(
-                f"Removed account {alias}; saved runs were kept"
+                f"Removed account {alias} and deleted {deleted} saved runs"
             )
         except (InboxedError, OSError, ValueError) as exc:
             self.app.notify(str(exc), severity="error", timeout=10)
@@ -295,5 +302,8 @@ class AccountsScreen(Static):
             return
         if workspace.account not in self.controller.settings.accounts:
             workspace.set_account(next(iter(self.controller.settings.accounts), None))
+            self.controller.activate_run(None)
+            workspace.refresh_table()
+            workspace.refresh_detail()
         else:
             workspace.refresh_runs(open_latest=False)

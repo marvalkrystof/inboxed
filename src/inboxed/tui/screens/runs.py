@@ -267,10 +267,16 @@ class RunsScreen(Static):
         self.query_one("#runs-table", SelectionList).focus()
 
     def refresh_rows(self):
+        if self.repository.locked:
+            return
         table = self.query_one("#runs-table", SelectionList)
         selected = set(table.selected)
         highlighted = self.selected_id()
-        self.rows = self.repository.list_runs()
+        try:
+            self.rows = self.repository.list_runs()
+        except InboxedError as exc:
+            self.query_one("#runs-status", Static).update(str(exc))
+            return
         with self.prevent(SelectionList.SelectedChanged):
             table.clear_options()
             table.add_options(

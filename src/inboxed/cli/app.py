@@ -12,8 +12,11 @@ from inboxed.domain.errors import InboxedError
 from inboxed.providers.gmail.auth import authenticate, token_path
 from inboxed.services.execution import ExecutionService
 from inboxed.services.scanning import ScanService
+
 from .rendering import console, emit_json, show_run
 from .review import interactive_review
+
+DEFAULT_DATA_DIR = user_data_path("inboxed")
 
 app = typer.Typer(no_args_is_help=True, help="Classify, review and clean up email locally.")
 runs_app = typer.Typer(no_args_is_help=True)
@@ -38,13 +41,62 @@ def handled(func):
     return wrapper
 
 
+def unlocked_repository(ctx):
+    repo = bootstrap.repository(ctx.obj.data_dir)
+    if repo.locked:
+        repo.unlock(typer.prompt("Run history password", hide_input=True, err=True))
+    return repo
+
+
+@runs_app.command("encrypt")
+@handled
+def encrypt_runs(ctx: typer.Context):
+    """Password-protect existing and future run history (minimum 12 characters)."""
+    repo = bootstrap.repository(ctx.obj.data_dir)
+    if repo.encrypted:
+        raise InboxedError("Run encryption is already enabled")
+    typer.echo("A forgotten password cannot be recovered. Google tokens are stored separately.")
+    password = typer.prompt(
+        "New run history password", hide_input=True, confirmation_prompt=True, err=True
+    )
+    repo.enable_encryption(password)
+    console.print("Saved run history is encrypted.")
+
+
+@runs_app.command("decrypt")
+@handled
+def decrypt_runs(ctx: typer.Context):
+    """Turn off encryption for existing and future run history."""
+    repo = bootstrap.repository(ctx.obj.data_dir)
+    if not repo.encrypted:
+        raise InboxedError("Run encryption is already disabled")
+    password = typer.prompt("Current run history password", hide_input=True, err=True)
+    repo.disable_encryption(password)
+    console.print("Saved run history is no longer encrypted.")
+
+
+@runs_app.command("password")
+@handled
+def change_run_password(ctx: typer.Context):
+    """Change the password for encrypted run history."""
+    repo = bootstrap.repository(ctx.obj.data_dir)
+    if not repo.encrypted:
+        raise InboxedError("Enable run encryption before changing its password")
+    current = typer.prompt("Current run history password", hide_input=True, err=True)
+    new = typer.prompt(
+        "New run history password", hide_input=True, confirmation_prompt=True, err=True
+    )
+    repo.change_password(current, new)
+    console.print("Run history password changed.")
+
+
 @app.callback()
 def setup(
     ctx: typer.Context,
     config: Annotated[Path, typer.Option(help="TOML configuration file.")] = Path("config.toml"),
     data_dir: Annotated[
         Path, typer.Option(help="Tokens and saved runs directory.")
-    ] = user_data_path("inboxed"),
+    ] = DEFAULT_DATA_DIR,
 ):
     ctx.obj = Context(config.expanduser(), data_dir.expanduser())
 
@@ -100,14 +152,18 @@ def scan(
     provider_query: Annotated[str | None, typer.Option()] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
     skip_processed: Annotated[
-        bool, typer.Option("--skip-processed/--no-skip-processed", help="Skip emails that already have Inboxed tags or labels")
+        bool,
+        typer.Option(
+            "--skip-processed/--no-skip-processed",
+            help="Skip emails that already have Inboxed tags or labels",
+        ),
     ] = False,
 ):
     """Scan inbox messages into a saved proposal; never modify the mailbox."""
     settings = load_settings(ctx.obj.config)
+    repo = unlocked_repository(ctx)
     classifier = bootstrap.build_classifier(settings)
     tags = bootstrap.build_tag_generator(settings) if generate_tags else None
-    repo = bootstrap.repository(ctx.obj.data_dir)
 
     def progress(event):
         if not json_output and "count" in event:
@@ -136,7 +192,7 @@ def scan(
 @handled
 def list_runs(ctx: typer.Context, json_output: Annotated[bool, typer.Option("--json")] = False):
     """List runs without connecting to Gmail or loading models."""
-    rows = bootstrap.repository(ctx.obj.data_dir).list_runs()
+    rows = unlocked_repository(ctx).list_runs()
     if json_output:
         emit_json(rows)
     else:
@@ -153,7 +209,7 @@ def display_run(
     ctx: typer.Context, run_id: str, json_output: Annotated[bool, typer.Option("--json")] = False
 ):
     """Show a saved run; --json exports it to standard output."""
-    run = bootstrap.repository(ctx.obj.data_dir).load(run_id)
+    run = unlocked_repository(ctx).load(run_id)
     if json_output:
         emit_json(run.to_dict())
     else:
@@ -170,7 +226,7 @@ def review(
     ] = False,
 ):
     """Approve, reject or edit saved proposals; progress is saved immediately."""
-    repo = bootstrap.repository(ctx.obj.data_dir)
+    repo = unlocked_repository(ctx)
     interactive_review(repo.load(run_id), repo, include_reviewed=include_reviewed)
 
 
@@ -186,7 +242,7 @@ def apply_run(
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ):
     """Apply approved proposals, or preview eligible actions with --dry-run."""
-    repo = bootstrap.repository(ctx.obj.data_dir)
+    repo = unlocked_repository(ctx)
     run = repo.load(run_id)
     settings = bootstrap.run_settings(run)
     with bootstrap.provider_session(
@@ -208,7 +264,5 @@ def tui(ctx: typer.Context):
     try:
         from inboxed.tui.app import launch
     except ImportError as exc:
-        raise InboxedError(
-            "Install the TUI with uv sync --extra tui"
-        ) from exc
+        raise InboxedError("Install the TUI with uv sync --extra tui") from exc
     launch(ctx.obj.config, ctx.obj.data_dir)

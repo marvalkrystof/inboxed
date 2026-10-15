@@ -18,6 +18,7 @@ CLI_AVAILABLE = all(importlib.util.find_spec(name) for name in ("typer", "rich",
 class CLITests(unittest.TestCase):
     def setUp(self):
         from typer.testing import CliRunner
+
         from inboxed.cli.app import app
 
         self.runner, self.app = CliRunner(), app
@@ -89,3 +90,25 @@ class CLITests(unittest.TestCase):
     def test_bad_run_and_invalid_limit_exit_nonzero(self):
         self.assertNotEqual(self.invoke("runs", "show", "missing").exit_code, 0)
         self.assertNotEqual(self.invoke("scan", "--limit", "0").exit_code, 0)
+
+    def test_encryption_commands_and_json_unlock(self):
+        password = "a long CLI history password"
+        new = "a replacement CLI history password"
+        result = self.invoke("runs", "encrypt", input=f"{password}\n{password}\n")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertNotIn(password, result.output)
+        result = self.invoke("runs", "show", self.run.id, "--json", input="wrong password\n")
+        self.assertEqual(result.exit_code, 1, result.output)
+        self.assertNotIn("test@example.com", result.output)
+        result = self.invoke("runs", "show", self.run.id, "--json", input=f"{password}\n")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(json.loads(result.stdout)["id"], self.run.id)
+        self.assertIn("Run history password", result.stderr)
+        self.assertNotIn(password, result.output)
+        result = self.invoke("runs", "password", input=f"{password}\n{new}\n{new}\n")
+        self.assertEqual(result.exit_code, 0, result.output)
+        result = self.invoke("runs", "decrypt", input=f"{new}\n")
+        self.assertEqual(result.exit_code, 0, result.output)
+        result = self.invoke("runs", "list", "--json")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(json.loads(result.stdout)[0]["id"], self.run.id)
