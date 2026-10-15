@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An open-source terminal workspace for your email. Classify Gmail and IMAP messages with local AI, review the suggestions, and clean up on your terms.">
+  <meta name="theme-color" content="#f8f6f0">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Inboxed — A little order. A lot more headspace.">
+  <meta property="og:description" content="Your email, organized with local AI. An open-source workspace for your terminal.">
+  <meta property="og:url" content="https://inboxed.fyi/">
+  <meta property="og:image" content="https://inboxed.fyi/assets/logo.png">
+  <link rel="canonical" href="https://inboxed.fyi/">
+  <link rel="icon" href="assets/logo.png" type="image/png">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/site.js" defer></script>
+  <title>Inboxed — A little order. A lot more headspace.</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="./" aria-label="Inboxed home"><span class="brand-icon" aria-hidden="true"><img src="assets/logo.png" alt="" width="56" height="56"></span>inboxed<span class="brand-period">.</span></a>
+      <nav aria-label="Main navigation"><a href="#workflow">How it works</a><a href="privacy/">Privacy</a><a class="nav-source" href="https://github.com/marvalkrystof/inboxed">GitHub <span aria-hidden="true">↗</span></a></nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero container" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> A calmer inbox starts in your terminal</p>
+        <h1 id="hero-title">A little order.<br>A lot more<br><em>headspace.</em></h1>
+        <p class="hero-description">Meet Inboxed. Organize your email with AI running on your computer, review what it suggests, and make room for what matters.</p>
+        <div class="hero-actions"><a class="button button-primary" href="#start">Get started <span aria-hidden="true">↗</span></a><a class="text-link" href="https://github.com/marvalkrystof/inboxed">Explore the source <span aria-hidden="true">→</span></a></div>
+        <p class="hero-meta">Open source <span>·</span> Gmail &amp; IMAP <span>·</span> Local AI</p>
+      </div>
+      <div class="hero-visual">
+        <img class="inbox-sketch" src="assets/inbox-sketch.svg" alt="An ink drawing of letters in a paper tray, with a leafy sprig growing beside them" width="600" height="480">
+        <p class="art-caption">A little room to breathe.</p>
+      </div>
+    </section>
+
+    <div class="trust-strip"><div class="container"><span>Built for your terminal.</span><span>Powered by local Ollama models.</span><span>Made to keep you in control.</span></div></div>
+
+    <section class="preview-section container" aria-labelledby="preview-title"><div class="preview-copy"><p class="eyebrow">A WORKSPACE WITH SOME BREATHING ROOM</p><h2 id="preview-title">Your email.<br>Your model.<br><em>Your call.</em></h2><p>Categories, topic tags, and a review queue, brought together in one terminal workspace. Start with a small scan and take it from there.</p></div><div class="preview-window">
+        <div class="terminal" aria-label="Illustrative Inboxed terminal preview with example messages">
+          <div class="terminal-title"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>inboxed / personal</span><span class="terminal-local">LOCAL</span></div>
+          <div class="terminal-content">
+            <p class="terminal-command"><span>$</span> inboxed scan --limit 3</p>
+            <p class="terminal-dim">Scan complete. Your mailbox is unchanged.</p>
+            <div class="terminal-grid terminal-grid-heading"><span>MESSAGE</span><span>CLASS</span><span>PROPOSAL</span></div>
+            <div class="terminal-grid"><span><b>Field Notes</b><small>This week’s reading</small></span><span class="tag tag-blue">Newsletter</span><span>Archive</span></div>
+            <div class="terminal-grid"><span><b>The Paper Shop</b><small>Your receipt</small></span><span class="tag tag-yellow">Receipt</span><span>Label</span></div>
+            <div class="terminal-grid"><span><b>Studio North</b><small>Friday project notes</small></span><span class="tag tag-green">Work</span><span>Label</span></div>
+            <div class="terminal-bottom"><span><span class="terminal-check" aria-hidden="true">✓</span> 3 proposals ready for review</span><span>0 applied</span></div>
+          </div>
+        </div>
+        <p class="visual-caption">Illustrative preview. Example messages, real workflow.</p>
+    </div></section>
+
+    <section class="section container" id="workflow" aria-labelledby="workflow-title">
+      <div class="section-heading"><p class="eyebrow">LESS SORTING. MORE LIVING.</p><h2 id="workflow-title">From inbox to <em>in order.</em></h2><p>A simple rhythm for the email you want to keep, the clutter you want to clear, and everything in between.</p></div>
+      <div class="steps">
+        <article class="step"><span class="step-number">01 / CONNECT</span><h3>Your mail, connected.</h3><p>Sign in to Gmail in your browser, or connect an IMAP account.</p><span class="step-detail"><span aria-hidden="true">↗</span> Your provider. Your account.</span></article>
+        <article class="step"><span class="step-number">02 / CLASSIFY</span><h3>A place for everything.</h3><p>Run a local Ollama model to classify messages into your categories and optionally suggest topic tags. Scans save proposals for review.</p><span class="step-detail"><span aria-hidden="true">⌘</span> AI running on your computer.</span></article>
+        <article class="step"><span class="step-number">03 / REVIEW</span><h3>You make the call.</h3><p>Review, edit, approve, or reject suggestions. Apply labels, archive, or move messages to Trash when you’re ready. Automation is an explicit choice.</p><span class="step-detail"><span aria-hidden="true">✓</span> Review first. Apply when ready.</span></article>
+      </div>
+    </section>
+
+    <section class="privacy-band" aria-labelledby="privacy-title">
+      <div class="container privacy-layout"><div><p class="eyebrow">A PERSONAL WORKSPACE</p><h2 id="privacy-title">Your email deserves<br>a little <em>privacy.</em></h2><a class="light-link" href="privacy/">Read our privacy policy <span aria-hidden="true">↗</span></a></div><div class="privacy-facts"><div><span class="fact-symbol" aria-hidden="true">↙</span><div><h3>Local processing</h3><p>Email content goes to your local Ollama instance for classification and optional tags. Inboxed has no hosted mailbox backend.</p></div></div><div><span class="fact-symbol" aria-hidden="true">◎</span><div><h3>Transparent storage</h3><p>Tokens, scan history, message metadata, and previews stay in your local app data. You control their retention.</p></div></div><div><span class="fact-symbol" aria-hidden="true">{ }</span><div><h3>Open to inspection</h3><p>Read the code, understand the permissions, and choose your own categories.</p></div></div></div></div>
+    </section>
+
+
+
+    <section class="start-section container" id="start" aria-labelledby="start-title"><div class="start-intro"><p class="eyebrow">A FRESH START, ONE COMMAND AWAY</p><h2 id="start-title">Meet your new<br><em>email routine.</em></h2><p>You’ll need Python 3.13+, uv, and a running local Ollama instance with a compatible model. The README covers model setup and configuration.</p><a class="text-link" href="https://github.com/marvalkrystof/inboxed#setup">Read the setup guide <span aria-hidden="true">→</span></a></div><div class="install-card"><div class="install-header"><span>GET INBOXED</span><button class="copy-button" type="button" data-copy-target="install-command">Copy commands</button></div><pre><code id="install-command">git clone https://github.com/marvalkrystof/inboxed.git
+cd inboxed
+uv sync --extra tui
+uv run inboxed init
+uv run inboxed tui</code></pre><p>Open the Accounts tab to connect, then scan and review.</p><p class="copy-status" role="status" aria-live="polite"></p></div></section>
+
+    <section class="contact-section container" aria-labelledby="contact-title"><div><p class="eyebrow">BUILT IN THE OPEN</p><h2 id="contact-title">Questions, ideas, or a stubborn inbox?</h2><p>Inboxed is maintained by <a href="https://github.com/marvalkrystof">Kryštof Marval</a>. Find documentation, report a problem, or help shape the project on GitHub.</p></div><a class="button button-outline" href="https://github.com/marvalkrystof/inboxed/issues">Get in touch <span aria-hidden="true">↗</span></a></section>
+  </main>
+  <footer class="site-footer"><div class="container footer-inner"><a class="brand" href="./">inboxed<span class="brand-period">.</span></a><p>A little more space for what matters.</p><nav aria-label="Footer navigation"><a href="privacy/">Privacy</a><a href="terms/">Terms</a><a href="https://github.com/marvalkrystof/inboxed">GitHub ↗</a></nav></div><div class="container footer-bottom"><span>Open source under the GNU GPL v3.</span></div></footer>
+</body>
+</html>
