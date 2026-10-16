@@ -22,7 +22,9 @@ def show_run(run: Run) -> None:
     for index, m in enumerate(run.messages, 1):
         c = m.classification
         actions = "\n".join(
-            f"{a.proposal.kind}: {a.proposal.label or ''} [{a.approval}/{a.execution}]"
+            f"{a.proposal.kind}: {a.proposal.folder or a.proposal.label or ''} "
+            f"{'(create folder if missing) ' if a.proposal.kind.value == 'move' else ''}"
+            f"[{a.approval}/{a.execution}]"
             for a in m.actions
         )
         table.add_row(

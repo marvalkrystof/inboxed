@@ -42,7 +42,8 @@ class ApplyScreen(Dialog):
             c = self.preview["counts"]
             self.query_one("#apply-summary", Static).update(
                 f"Account: {self.preview['account']}\n{self.preview['messages']} emails · "
-                f"{c['label']} labels · {c['archive']} archives · {c['trash']} Trash operations"
+                f"{c['label']} labels · {c.get('move', 0)} folder moves · "
+                f"{c['archive']} archives · {c['trash']} Trash operations"
             )
             if self.run_id == "__all__":
                 all_run = self.controller.get_run("__all__", self.account_alias)
@@ -54,7 +55,13 @@ class ApplyScreen(Dialog):
                 }
             self.query_one("#apply-actions", TextArea).load_text(
                 "\n".join(
-                    f"{a['action'].upper()} {a['label'] or ''} — {names.get(a['message_id'], '')}"
+                    (
+                        f"MOVE TO {a['folder']} (leaves Inbox"
+                        f"{'; create folder if missing' if a.get('create_folder') else ''})"
+                        f" — {names.get(a['message_id'], '')}"
+                        if a["action"] == "move"
+                        else f"{a['action'].upper()} {a['label'] or ''} — {names.get(a['message_id'], '')}"
+                    )
                     for a in self.preview["actions"]
                 )
             )

@@ -5,6 +5,14 @@ from inboxed.domain.entities import MessageDecision, Run
 from inboxed.services.review import ReviewService
 
 
+@dataclass(frozen=True)
+class AccountConnection:
+    status: str = "unknown"
+    identity: str = ""
+    checked_at: str = ""
+    error: str = ""
+
+
 def action_family(action) -> str:
     if action.proposal.kind.value == "label":
         return "tags" if action.proposal.generated else "class_labels"

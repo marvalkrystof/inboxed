@@ -102,7 +102,9 @@ class EmailDetail(VerticalScroll):
 
         c = message.classification
         actions_str = ", ".join(
-            f"{a.proposal.kind.value}: {a.proposal.label or ''} [{a.approval.value}/{a.execution.value}]"
+            f"{a.proposal.kind.value}: {a.proposal.folder or a.proposal.label or ''} "
+            f"{'(create folder if missing) ' if a.proposal.kind.value == 'move' else ''}"
+            f"[{a.approval.value}/{a.execution.value}]"
             for a in message.actions
         )
         lines = [

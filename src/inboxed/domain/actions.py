@@ -3,6 +3,7 @@ from enum import StrEnum
 
 class ActionKind(StrEnum):
     LABEL = "label"
+    MOVE = "move"
     ARCHIVE = "archive"
     TRASH = "trash"
 

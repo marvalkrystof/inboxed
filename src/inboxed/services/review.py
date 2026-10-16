@@ -27,7 +27,11 @@ class ReviewService:
         action.approval = approval
         if action.execution == Execution.SKIPPED:
             action.reviewed_outside_inbox = (
-                action.error == "Message left inbox; approve again to move it to Trash"
+                action.error
+                in (
+                    "Message left inbox; approve again to move it to Trash",
+                    "Message left inbox; approve again to move it to the selected folder",
+                )
                 and approval == Approval.APPROVED
             )
             action.execution = Execution.PENDING
@@ -85,7 +89,26 @@ class ReviewService:
             message.manually_classified = True
             message.error = None
             message.actions = PolicyService().propose(
-                message.classification, settings.definitions(), message.tags
+                message.classification,
+                settings.definitions(),
+                message.tags,
+                folder_routes=(
+                    settings.accounts[latest.account_alias].folder_routes
+                    if settings.accounts[latest.account_alias].organization == "folders"
+                    else None
+                ),
             )
+            message.warnings = [
+                warning
+                for warning in message.warnings
+                if warning != "No destination configured for this class; email stays in Inbox"
+            ]
+            if (
+                settings.accounts[latest.account_alias].organization == "folders"
+                and not message.actions
+            ):
+                message.warnings.append(
+                    "No destination configured for this class; email stays in Inbox"
+                )
             self.repository.save(latest)
             refresh_run(run, latest)

@@ -12,7 +12,8 @@ from inboxed.domain.errors import InboxedError
 
 from .controller import TUIController
 from .messages import JobFinished, JobProgress, JobStarted
-from .screens.accounts import AccountsScreen
+from .screens.accounts import AccountEditScreen, AccountsScreen
+from .screens.dialog import QuitScreen
 from .screens.encryption import RunPasswordScreen
 from .screens.runs import RunsScreen
 from .screens.settings import SettingsScreen
@@ -29,6 +30,8 @@ class InboxedApp(App):
         Binding("2", "switch_tab('runs')", "Runs"),
         Binding("3", "switch_tab('accounts')", "Accounts"),
         Binding("4", "switch_tab('settings')", "Settings"),
+        Binding("q", "quit", "Quit"),
+        Binding("ctrl+q", "quit", "Quit", show=False, priority=True),
     ]
 
     def __init__(self, controller: TUIController, config_path: Path | None = None):
@@ -73,7 +76,23 @@ class InboxedApp(App):
         if isinstance(self.screen, RunPasswordScreen) and self.screen.busy:
             self.notify("Wait for the encryption operation to finish before quitting")
             return
-        await super().action_quit()
+        if isinstance(self.screen, AccountEditScreen) and self.screen.busy:
+            self.notify("Wait for account sign-in or verification to finish before quitting")
+            return
+        if isinstance(self.screen, QuitScreen):
+            return
+        if self._jobs:
+
+            def chosen(stop):
+                if stop:
+                    self.quit_after_job = True
+                    self.request_stop()
+                    if not self._jobs:
+                        self.exit()
+
+            self.push_screen(QuitScreen(), chosen)
+        else:
+            self.exit()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated):
         if event.pane.id == "settings":
@@ -100,7 +119,7 @@ class InboxedApp(App):
     def show_settings(self):
         self.action_switch_tab("settings")
 
-    def show_workspace(self, account_alias=None, run_id=None, connect=False):
+    def show_workspace(self, account_alias=None, run_id=None):
         """Switch to Workspace tab, optionally loading a specific account/run."""
         ws = self.workspace
         if account_alias is not None and account_alias in self.controller.settings.accounts:
@@ -112,8 +131,6 @@ class InboxedApp(App):
             ws.requested_run_id = run_id
             self.call_after_refresh(lambda: ws.open_run(run_id))
         self.action_switch_tab("workspace")
-        if connect:
-            self.call_after_refresh(ws.action_connect)
 
     # ------------------------------------------------------------------ jobs
 

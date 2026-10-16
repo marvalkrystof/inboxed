@@ -68,28 +68,24 @@ class ScanService:
                 except Exception as exc:
                     run.errors.append(f"Cannot read approved exemplars: {exc}")
             existing_tags = []
-            if self.tag_generator:
-                try:
-                    existing_tags = [
-                        n[len(TAG_PREFIX) :]
-                        for n in self.provider.list_labels()
-                        if n.startswith(TAG_PREFIX)
-                    ]
-                except Exception as exc:
-                    run.errors.append(f"Cannot read existing tags: {exc}")
             inboxed_label_ids = set()
-            if skip_processed:
+            if self.tag_generator or skip_processed:
                 try:
-                    for name, identifier in self.provider.list_labels().items():
-                        if (
-                            name.startswith(CLASS_PREFIX)
-                            or name.startswith(TAG_PREFIX)
-                            or name.startswith("Inboxed/")
+                    if progress:
+                        progress({"event": "activity", "message": "Reading mailbox labels"})
+                    labels = self.provider.list_labels()
+                    if self.tag_generator:
+                        existing_tags = [
+                            n[len(TAG_PREFIX) :] for n in labels if n.startswith(TAG_PREFIX)
+                        ]
+                    for name, identifier in labels.items():
+                        if skip_processed and name.startswith(
+                            (CLASS_PREFIX, TAG_PREFIX, "Inboxed/")
                         ):
                             inboxed_label_ids.add(identifier)
                             inboxed_label_ids.add(name)
                 except Exception as exc:
-                    run.errors.append(f"Cannot read labels for skipping processed emails: {exc}")
+                    run.errors.append(f"Cannot read mailbox labels: {exc}")
             cursor = None
             seen = set()
             cursors = set()
@@ -113,6 +109,13 @@ class ScanService:
                         seen.add(ref.message_id)
                         decision = MessageDecision(ref, "", "", "")
                         try:
+                            if progress:
+                                progress(
+                                    {
+                                        "event": "activity",
+                                        "message": f"Fetching email {len(run.messages) + 1}",
+                                    }
+                                )
                             message = self.provider.get_message(ref)
                             if message is None:
                                 raise ModelError("Message disappeared before scanning")
@@ -126,7 +129,9 @@ class ScanService:
                                     skipped_count += 1
                                     run.skipped_count = skipped_count
                                     if progress:
-                                        subj = f": {message.subject[:40]}" if message.subject else ""
+                                        subj = (
+                                            f": {message.subject[:40]}" if message.subject else ""
+                                        )
                                         progress(
                                             {
                                                 "event": "activity",
@@ -192,8 +197,22 @@ class ScanService:
                                 except Exception as exc:
                                     decision.warnings.append(f"Tag generation failed: {exc}")
                             decision.actions = PolicyService().propose(
-                                result, classes, decision.tags
+                                result,
+                                classes,
+                                decision.tags,
+                                folder_routes=(
+                                    settings.accounts[account_alias].folder_routes
+                                    if settings.accounts[account_alias].organization == "folders"
+                                    else None
+                                ),
                             )
+                            if (
+                                settings.accounts[account_alias].organization == "folders"
+                                and not decision.actions
+                            ):
+                                decision.warnings.append(
+                                    "No destination configured for this class; email stays in Inbox"
+                                )
                         except Exception as exc:
                             decision.error = str(exc)
                         run.messages.append(decision)

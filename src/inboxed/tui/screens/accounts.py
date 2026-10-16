@@ -1,7 +1,9 @@
+import asyncio
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, Label, Select, Static
@@ -12,12 +14,15 @@ from inboxed.providers.gmail.auth import token_path
 from inboxed.providers.imap.config import IMAPConfig
 
 from .dialog import Dialog
+from .folders import FolderRoutingScreen
 
 
 class AccountEditScreen(Dialog):
-    def __init__(self, alias=None, account=None):
+    def __init__(self, alias=None, account=None, *, controller, config_path):
         super().__init__()
         self.alias, self.account = alias, account
+        self.controller, self.config_path = controller, config_path
+        self.busy = False
 
     def compose(self) -> ComposeResult:
         account = self.account
@@ -51,7 +56,12 @@ class AccountEditScreen(Dialog):
                 disabled=bool(account),
             )
             yield Vertical(
-                Label("Google OAuth uses the app's configured Desktop client."),
+                Label("Saving signs in to Google when needed and verifies mailbox access."),
+                Static(
+                    "Google will ask permission to read your mail, organize it into labels/folders, "
+                    "and move messages or move them to Trash.",
+                    markup=False,
+                ),
                 id="gmail-fields",
             )
             with Vertical(id="imap-fields"):
@@ -75,6 +85,7 @@ class AccountEditScreen(Dialog):
                     password=True,
                     id="imap-password",
                 )
+                yield Label("Gmail IMAP requires an app password when using password sign-in.")
                 yield Label("Password environment variable (optional)")
                 yield Input(
                     init_env,
@@ -96,7 +107,15 @@ class AccountEditScreen(Dialog):
             yield Static("", id="account-form-error", markup=False)
             with Horizontal(classes="dialog-buttons"):
                 yield Button("Cancel", id="cancel-account-edit")
-                yield Button("Save account", id="save-account", variant="primary")
+                yield Button(
+                    "Save changes" if account else "Add account",
+                    id="save-account",
+                    variant="primary",
+                )
+
+    def action_cancel(self):
+        if not self.busy:
+            self.dismiss(None)
 
     def on_mount(self):
         self.update_provider_fields(str(self.query_one("#account-provider", Select).value))
@@ -110,8 +129,11 @@ class AccountEditScreen(Dialog):
         self.query_one("#imap-fields").display = provider == "imap"
 
     def on_button_pressed(self, event: Button.Pressed):
+        event.stop()
+        if self.busy:
+            return
         if event.button.id == "cancel-account-edit":
-            self.dismiss(None)
+            self.action_cancel()
             return
         if event.button.id != "save-account":
             return
@@ -128,7 +150,9 @@ class AccountEditScreen(Dialog):
                     "username": self.query_one("#imap-username", Input).value.strip(),
                     "security": str(self.query_one("#imap-security", Select).value),
                     "password": pwd_val if pwd_val else None,
-                    "password_env": env_val if env_val else ("INBOXED_IMAP_PASSWORD" if not pwd_val else None),
+                    "password_env": env_val
+                    if env_val
+                    else ("INBOXED_IMAP_PASSWORD" if not pwd_val else None),
                     "port": self.query_one("#imap-port", Input).value.strip() or None,
                     "inbox_folder": self.query_one("#imap-inbox-folder", Input).value.strip(),
                     "archive_folder": self.query_one("#imap-archive-folder", Input).value.strip()
@@ -143,9 +167,55 @@ class AccountEditScreen(Dialog):
                     options["port"] = int(options["port"])
                 options = IMAPConfig.model_validate(options).model_dump(exclude_none=True)
                 account = {"provider": "imap", "options": options}
-            self.dismiss((alias, account, bool(self.account)))
+            saved = (
+                self.account.model_dump(exclude_none=True)
+                if self.account
+                else {"organization": "folders"}
+            )
+            saved.update(account)
+            if self.config_path is None:
+                raise InboxedError("Open Inboxed with a config file to manage accounts")
+            if self.app._jobs:
+                raise InboxedError(
+                    "Wait for background jobs to finish before saving account settings"
+                )
+            self.busy = True
+            for control in (*self.query(Button), *self.query(Input), *self.query(Select)):
+                control.disabled = True
+            self.query_one("#account-form-error", Static).update(
+                "Verifying Google sign-in and mailbox access… Complete sign-in in your browser if prompted."
+                if provider == "gmail"
+                else "Verifying IMAP credentials and mailbox access…"
+            )
+            self.verify_and_save(alias, saved)
         except (ValueError, InboxedError) as exc:
             self.query_one("#account-form-error", Static).update(str(exc))
+
+    @work(exclusive=True, group="account-setup", exit_on_error=False)
+    async def verify_and_save(self, alias, account):
+        try:
+            await asyncio.to_thread(
+                self.controller.save_verified_account,
+                self.config_path,
+                alias,
+                account,
+                self.account,
+            )
+        except Exception as exc:  # noqa: BLE001 -- vendor sign-in errors stay in the setup form
+            self.query_one("#account-form-error", Static).update(
+                str(exc)
+                if isinstance(exc, (InboxedError, ValueError))
+                else "Could not complete sign-in or verify mailbox access. Check your credentials and try saving again."
+            )
+        else:
+            self.dismiss(alias)
+        finally:
+            self.busy = False
+            if self.is_mounted:
+                for control in (*self.query(Button), *self.query(Input), *self.query(Select)):
+                    control.disabled = False
+                self.query_one("#account-alias", Input).disabled = bool(self.account)
+                self.query_one("#account-provider", Select).disabled = bool(self.account)
 
 
 class RemoveAccountScreen(Dialog):
@@ -191,10 +261,10 @@ class AccountsScreen(Static):
                 with Vertical(id="account-actions"):
                     yield Button("Add account", id="add-account", variant="primary")
                     yield Button("Edit selected", id="edit-account")
-                    yield Button("Connect selected", id="connect-account")
+                    yield Button("Folders / routing", id="account-folders")
                     yield Button("Remove selected", id="remove-account", variant="error")
             yield Static(
-                "Gmail uses the app's configured Google OAuth client. IMAP supports direct passwords or environment variables.",
+                "Adding an account signs in or verifies its credentials. Edit and save an account to refresh its access.",
                 id="account-help",
                 markup=False,
             )
@@ -216,7 +286,7 @@ class AccountsScreen(Static):
         picker.value = target if target is not None else Select.BLANK
         self.alias = target
         self.show_summary()
-        for button_id in ("edit-account", "connect-account", "remove-account"):
+        for button_id in ("edit-account", "remove-account", "account-folders"):
             self.query_one(f"#{button_id}", Button).disabled = target is None
 
     def show_summary(self):
@@ -224,50 +294,77 @@ class AccountsScreen(Static):
         account = self.controller.settings.accounts.get(self.alias) if self.alias else None
         if account is None:
             summary.update("No accounts configured yet.")
-        elif account.provider == "gmail":
-            summary.update("Gmail API · Google sign-in")
+            summary.tooltip = None
+            return
+        if account.provider == "gmail":
+            detail = f"Gmail API · Google sign-in · {account.organization}"
         else:
-            summary.update(
+            detail = (
                 f"IMAP · {account.options.get('username', '')}@{account.options.get('host', '')} · "
                 f"{account.options.get('security', 'ssl').upper()}"
+                f" · {account.organization}"
             )
+        connection = self.controller.connection_status(self.alias)
+        status = {
+            "connected": f"● Connected · {connection.identity.split('|', 1)[0]}",
+            "checking": "◌ Checking connection…",
+            "error": "○ Connection failed",
+            "disconnected": "○ Not connected",
+        }.get(connection.status, "○ Connection not checked")
+        summary.update(f"{detail}\n{status}")
+        summary.tooltip = connection.error or None
 
     def on_select_changed(self, event: Select.Changed):
         if event.select.id == "managed-account":
             self.alias = None if event.value is Select.BLANK else str(event.value)
             self.show_summary()
-            for button_id in ("edit-account", "connect-account", "remove-account"):
+            for button_id in (
+                "edit-account",
+                "remove-account",
+                "account-folders",
+            ):
                 self.query_one(f"#{button_id}", Button).disabled = self.alias is None
 
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "add-account":
-            self.app.push_screen(AccountEditScreen(), self.save_account)
+            self.app.push_screen(
+                AccountEditScreen(controller=self.controller, config_path=self.config_path),
+                self.account_saved,
+            )
         elif event.button.id == "edit-account" and self.alias:
             self.app.push_screen(
-                AccountEditScreen(self.alias, self.controller.settings.accounts[self.alias]),
-                self.save_account,
+                AccountEditScreen(
+                    self.alias,
+                    self.controller.settings.accounts[self.alias],
+                    controller=self.controller,
+                    config_path=self.config_path,
+                ),
+                self.account_saved,
             )
         elif event.button.id == "remove-account" and self.alias:
             self.app.push_screen(RemoveAccountScreen(self.alias), self.remove_account)
-        elif event.button.id == "connect-account" and self.alias:
-            workspace = self.app.workspace
-            workspace.set_account(self.alias)
-            self.app.show_home()  # switch to Workspace tab
-            workspace.action_connect()
+        elif event.button.id == "account-folders" and self.alias:
+            self.app.push_screen(
+                FolderRoutingScreen(self.controller, self.config_path, self.alias),
+                self.routing_saved,
+            )
 
-    def save_account(self, result):
-        if not result:
+    def routing_saved(self, alias):
+        if alias:
+            self.refresh_accounts(alias)
+            self.refresh_workspace_settings()
+            self.query_one("#accounts-status", Static).update(
+                "Saved routing. Start a new scan to use these destinations."
+            )
+
+    def account_saved(self, alias):
+        if not alias:
             return
-        alias, account, editing = result
         try:
-            if self.config_path is None:
-                raise InboxedError("Start the app with --config to manage account settings")
-            save_account_config(self.config_path, alias, account, replace_existing=editing)
-            self.controller.settings = load_settings(self.config_path)
             self.refresh_workspace_settings()
             self.refresh_accounts(alias)
             self.query_one("#accounts-status", Static).update(
-                f"Saved account {alias} in {self.config_path}"
+                f"Account {alias} connected and saved"
             )
         except (InboxedError, OSError, ValueError) as exc:
             self.app.notify(str(exc), severity="error", timeout=10)
@@ -287,6 +384,7 @@ class AccountsScreen(Static):
             token = token_path(self.controller.data_dir, alias)
             token.unlink(missing_ok=True)
             self.controller.settings = load_settings(self.config_path)
+            self.controller.forget_connection(alias)
             self.refresh_workspace_settings()
             self.refresh_accounts()
             self.app.runs.refresh_rows()

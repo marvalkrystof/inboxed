@@ -3,6 +3,7 @@ import typer
 from inboxed.domain.actions import Approval, Execution
 from inboxed.domain.errors import InboxedError
 from inboxed.services.review import ReviewService
+
 from .rendering import console
 
 
@@ -64,7 +65,9 @@ def interactive_review(run, repository, include_reviewed: bool = False) -> None:
                 continue
             p = action.proposal
             console.print(
-                f"Action: {p.kind} {p.label or ''} [{action.approval}/{action.execution}]"
+                f"Action: {p.kind} {p.folder or p.label or ''} "
+                f"{'(create folder if missing) ' if p.kind.value == 'move' else ''}"
+                f"{'(leaves Inbox) ' if p.folder else ''}[{action.approval}/{action.execution}]"
             )
             if action.error:
                 console.print(action.error)

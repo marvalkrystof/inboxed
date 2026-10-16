@@ -32,7 +32,17 @@ class SettingsScreen(Static):
                 yield Static("Saved run privacy", classes="settings-heading")
                 with Horizontal(id="run-encryption-control"):
                     yield Label("Encrypt saved runs")
-                    yield Switch(self.controller.repository.encrypted, id="encrypt-runs")
+                    yield Switch(
+                        self.controller.repository.encrypted,
+                        id="encrypt-runs",
+                        animate=False,
+                        tooltip="Toggle password protection for saved runs",
+                    )
+                    yield Static(
+                        "On" if self.controller.repository.encrypted else "Off",
+                        id="run-encryption-state",
+                        classes="is-on" if self.controller.repository.encrypted else "",
+                    )
                 yield Static(
                     "Password protection for existing and future run history. Unlock once per "
                     "session. A forgotten password cannot be recovered. Google tokens and "
@@ -76,6 +86,9 @@ class SettingsScreen(Static):
         repo = self.controller.repository
         with self.prevent(Switch.Changed):
             self.query_one("#encrypt-runs", Switch).value = repo.encrypted
+        indicator = self.query_one("#run-encryption-state", Static)
+        indicator.update("On" if repo.encrypted else "Off")
+        indicator.set_class(repo.encrypted, "is-on")
         self.query_one("#change-run-password", Button).disabled = not repo.encrypted
         if changed:
             self.query_one("#settings-status", Static).update(

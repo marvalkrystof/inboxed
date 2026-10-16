@@ -7,6 +7,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, SelectionList, Static
 
 from inboxed.domain.errors import InboxedError
+from inboxed.tui.widgets.selection_list import BracketSelectionList
 
 from .dialog import Dialog
 
@@ -245,7 +246,7 @@ class RunsScreen(Static):
                 "Click a checkbox or press Space to select runs. 'View logs' shows details and audit logs.",
                 markup=False,
             )
-            yield SelectionList(id="runs-table")
+            yield BracketSelectionList(id="runs-table")
             with Horizontal(classes="page-actions"):
                 yield Button("Select all", id="select-all-runs")
                 yield Button("Clear selection", id="clear-runs-selection")

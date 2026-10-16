@@ -62,6 +62,12 @@ class ProposedAction:
     label: str | None = None
     generated: bool = False
     id: str = field(default_factory=lambda: uuid4().hex)
+    folder: str | None = None
+    create_folder: bool = False
+
+    def __post_init__(self):
+        if self.kind == ActionKind.MOVE:
+            object.__setattr__(self, "create_folder", True)
 
 
 @dataclass

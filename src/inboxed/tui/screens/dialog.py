@@ -21,9 +21,9 @@ class HelpScreen(Dialog):
                 "/: search   a/r: approve/reject   e: edit class and tags\n"
                 "n: scan   p: preview/apply   b: load full text\n"
                 "v: toggle email list/detail on narrow screens   l: toggle activity log   h: home\n"
-                "?: help   q: quit   Escape: close dialog\n\n"
+                "?: help   q: quit from any page   Ctrl+Q: quit while editing   Escape: close dialog\n\n"
                 "Approvals save immediately. Apply shows a separate confirmation.\n"
-                "Full text stays in memory. Use Connect to authorize a configured account.",
+                "Full text stays in memory. Add or edit an account in Accounts to sign in.",
                 markup=False,
             )
             yield Button("Close", id="close-help")

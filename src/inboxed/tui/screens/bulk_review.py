@@ -7,6 +7,7 @@ from .dialog import Dialog
 FAMILIES = [
     ("class_labels", "Class labels"),
     ("tags", "Generated / manual tags"),
+    ("move", "Move to folder (leaves Inbox)"),
     ("archive", "Archive"),
     ("trash", "Trash"),
 ]

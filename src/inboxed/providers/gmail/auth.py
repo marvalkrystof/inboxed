@@ -29,12 +29,15 @@ def save_credentials(path: Path, credentials) -> None:
 
 
 def authenticate(path: Path, write: bool = False):
-    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google_auth_oauthlib.flow import InstalledAppFlow, WSGITimeoutError
 
     flow = InstalledAppFlow.from_client_config(
         deepcopy(CLIENT_CONFIG), [WRITE_SCOPE if write else READ_SCOPE]
     )
-    credentials = flow.run_local_server(port=0, prompt="consent")
+    try:
+        credentials = flow.run_local_server(port=0, prompt="consent", timeout_seconds=180)
+    except WSGITimeoutError as exc:
+        raise ProviderError("Google sign-in timed out. Try signing in again") from exc
     save_credentials(path, credentials)
     return credentials
 

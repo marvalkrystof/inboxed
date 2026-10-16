@@ -31,7 +31,7 @@ CLI and TUI for classifying Gmail and IMAP protocol emails with local AI models 
 3. **Mailbox Credentials**
    - **Gmail**: Google OAuth 2.0 Desktop client bundled with the app.
    - **IMAP**: Server host, port, username, and password (or app password).
-     - *Note on IMAP tags*: Standard IMAP stores tags as keyword flags (`inboxed_...`). Webmail interfaces that organize messages strictly by folders (such as Seznam.cz) do not render IMAP keyword tags in their web UI. To route emails into visible folders on these providers, set `cleanup = "archive"` or `cleanup = "trash"` in your class configuration.
+     - Missing destination folders are created automatically on Apply. **Accounts → Folders / routing** optionally lets you choose custom destinations. Folder moves remove messages from Inbox, including Gmail.
 
 ---
 
@@ -55,6 +55,11 @@ uv run inboxed init
 
 ### Gmail
 
+In the TUI, **Accounts → Add account** handles Google sign-in and verifies access before
+saving. Gmail requests the permissions needed to read mail and Apply mailbox changes.
+For existing accounts that need renewed authorization, use **Edit selected → Save changes**.
+IMAP accounts likewise verify their configured credentials when added or edited.
+
 ```sh
 # Read-only access (scanning and classification only)
 uv run inboxed auth --account personal
@@ -71,7 +76,54 @@ OAuth client secret cannot be kept confidential in a desktop application. For ge
 publish the OAuth consent screen and complete Google's verification for the Gmail scopes requested
 by the app.
 
+### Folder routing (Gmail and IMAP)
+
+Folder routing is the default; no folder setup or creation button is needed. Each class
+automatically uses a folder such as **Inboxed - Receipts**. It is created if missing when you
+approve and Apply a move into it; existing folders are reused. Only folders needed by
+approved actions are created. The preview explicitly says **create folder if missing**.
+Gmail creates a label for each folder and removes the Inbox label when moving.
+
+You can optionally use **Accounts → Folders / routing** to choose another destination
+or **Leave in Inbox**. **Automatic** is the default option. Missing custom destinations
+are also created on Apply. If the server refuses creation, create the folder in webmail
+and retry Apply.
+
+Save routing, then start a **new scan**. Saved runs keep their original proposals and
+destinations. The Apply preview shows **MOVE TO … (leaves Inbox)**; every folder move
+requires explicit approval, including when class automation is enabled. Classes explicitly
+set to **Leave in Inbox** stay there. Existing class `cleanup = "archive"` or `"trash"` rules take priority;
+folder routing applies to classes with `cleanup = "none"`. Topic tags stay in local
+run history in folder mode, rather than creating copies in multiple folders.
+
+Folder moves work through IMAP MOVE, or COPY plus UID EXPUNGE when UIDPLUS is available.
+Gmail uses its native label operations to add the destination and remove Inbox.
+If the server supports neither safe method, Inboxed reports that moves are unsupported.
+IMAP moves require a Message-ID and a saved content fingerprint so retries can verify
+the destination. Apply reuses existing folders and creates missing destinations before
+moving emails. Preview and dry-run operations never create folders.
+
+Accounts without an explicit organization setting use automatic class folders.
+Explicit `organization = "labels"` settings still select label mode. You can also
+configure destinations directly:
+
+```toml
+[accounts.personal]
+provider = "gmail" # or "imap", with its connection options below
+organization = "folders"
+folder_routes = { receipts = "Finance/Receipts", work = "Projects", other = "" }
+# Unlisted classes use automatic folders. An empty string means Leave in Inbox.
+```
+
+Folder paths and hierarchy separators come from your server; select existing folders
+from the list when possible. Moving a message is separate from creating a folder.
+
 ### IMAP
+
+**Gmail with 2-Step Verification (2FA):** for IMAP password sign-in, use a
+[Google app password](https://support.google.com/accounts/answer/185833) instead of your
+regular Google password. Enter it in the account's **Password / App password** field or
+set it as `INBOXED_IMAP_PASSWORD`. Creating an app password requires 2-Step Verification.
 
 Configure the account in `config.toml`:
 
@@ -96,6 +148,15 @@ uv run inboxed auth --account personal --write
 ```
 
 ---
+
+## Connection status
+
+The Workspace shows the selected account's connection status below the toolbar. Saved
+credentials are checked in the background without opening sign-in. After successful
+verification, the indicator reads **Connected**; its tooltip shows the last verification
+time. Connections open on demand for mailbox operations. Adding an account handles
+sign-in or credential verification; failed setup keeps the form open without saving
+the account. Use **Accounts → Edit selected → Save changes** to refresh access.
 
 ## Saved run encryption
 
@@ -141,13 +202,13 @@ uv run --extra tui inboxed tui
 ### Tabs
 
 - **Workspace (`1`)**:
-  - Upper toolbar with account selector, run selector (including **All runs altogether**), `Connect`, `Scan`, `Apply`, and `Stop all`.
+  - Upper toolbar with account selector, run selector (including **All runs altogether**), `Scan`, `Apply`, and `Stop all`, plus an account connection indicator.
   - Filters for search, class, status, and confidence threshold.
   - Email table with multi-select checkboxes.
   - Detail pane with on-demand full text (loads only when scrolling down or clicking the excerpt banner).
   - Background jobs monitor and live activity log.
 - **Runs (`2`)**: View historical runs and batch-delete local history.
-- **Accounts (`3`)**: Add, edit, test, and remove Gmail and IMAP accounts. Removing an account also deletes all its saved runs and its local OAuth token.
+- **Accounts (`3`)**: Add or edit Gmail and IMAP accounts with sign-in and verification included. Removing an account also deletes all its saved runs and its local OAuth token.
 - **Settings (`4`)**: Choose installed Ollama models, edit local endpoints, and manage password encryption for saved runs.
 
 ### Selecting models
@@ -184,7 +245,8 @@ explicitly unverified. Both model configurations are validated and saved togethe
 | `v` | View email / Close email |
 | `l` | Toggle activity log panel |
 | `?` | Help |
-| `q` | Quit |
+| `q` | Quit from any page |
+| `Ctrl+Q` | Quit while typing in a field |
 | `Esc` | Close dialog |
 
 ---

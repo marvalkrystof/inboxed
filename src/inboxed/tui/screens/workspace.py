@@ -1,7 +1,9 @@
+import asyncio
 from collections import deque
 from datetime import datetime
 from typing import ClassVar
 
+from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -35,8 +37,7 @@ from inboxed.tui.widgets.run_list import RunList
 
 from .apply import ApplyScreen
 from .bulk_review import BulkReviewScreen
-from .connect import ConnectScreen
-from .dialog import HelpScreen, QuitScreen
+from .dialog import HelpScreen
 from .edit import EditScreen
 from .scan import ScanScreen
 
@@ -65,7 +66,6 @@ class WorkspaceScreen(Static):
         Binding("[", "toggle_sidebar", "Toggle sidebar", show=False),
         Binding("escape", "close_detail", "Close detail", show=False),
         Binding("question_mark", "help", "Help"),
-        Binding("q", "quit", "Quit"),
     ]
 
     def __init__(self, controller):
@@ -82,6 +82,7 @@ class WorkspaceScreen(Static):
         self._active_jobs: dict[int, dict] = {}
         self._narrow_detail = False
         self.log_entries = deque(maxlen=1000)
+        self._checking_accounts: set[str] = set()
 
     @property
     def busy(self) -> bool:
@@ -97,10 +98,10 @@ class WorkspaceScreen(Static):
                 id="account-picker",
             )
             yield Select([], prompt="Saved run", id="run-picker")
-            yield Button("Connect", id="connect")
             yield Button("Scan", id="scan")
             yield Button("Apply", id="apply")
             yield Button("Stop all", id="stop", disabled=True)
+        yield Static("", id="account-connection", markup=False)
         with Horizontal(id="workspace"):
             with Vertical(id="main"):
                 with Horizontal(id="filters"):
@@ -158,7 +159,7 @@ class WorkspaceScreen(Static):
 
     def on_mount(self):
         self.log_activity(
-            "Workspace ready. Choose Connect to authorize an account, or Scan to start."
+            "Workspace ready. Accounts are verified when added. Choose Scan to start."
         )
         self.refresh_runs(open_latest=bool(self.account))
         if self.requested_run_id:
@@ -201,6 +202,7 @@ class WorkspaceScreen(Static):
         return not isinstance(self.app.focused, (Input, Select))
 
     def refresh_runs(self, open_latest=False):
+        self.update_connection_status(check=True)
         if self.controller.repository.locked:
             return
         accounts = list(self.controller.settings.accounts)
@@ -273,11 +275,18 @@ class WorkspaceScreen(Static):
                 self.query_one("#confidence-val", Input).value = self.state.filters.confidence_val
                 picker = self.query_one("#run-picker", Select)
                 if not any(val == run.id for _, val in picker._options):
-                    options = [(prompt, val) for prompt, val in picker._options if val is not Select.BLANK]
+                    options = [
+                        (prompt, val) for prompt, val in picker._options if val is not Select.BLANK
+                    ]
                     if run.id == "__all__":
-                        options.insert(0, (f"All runs altogether · {len(run.messages)} emails", "__all__"))
+                        options.insert(
+                            0, (f"All runs altogether · {len(run.messages)} emails", "__all__")
+                        )
                     else:
-                        options.insert(0, (f"{run.created_at[:16]} · {len(run.messages)} · {run.status}", run.id))
+                        options.insert(
+                            0,
+                            (f"{run.created_at[:16]} · {len(run.messages)} · {run.status}", run.id),
+                        )
                     picker.set_options(options)
                 picker.value = run.id
             self.refresh_table()
@@ -391,7 +400,6 @@ class WorkspaceScreen(Static):
     def on_button_pressed(self, event: Button.Pressed):
         handlers = {
             "scan": self.action_scan,
-            "connect": self.action_connect,
             "apply": self.action_apply,
             "approve": self.action_approve,
             "reject": self.action_reject,
@@ -452,9 +460,62 @@ class WorkspaceScreen(Static):
         self.log_activity(exc, "ERROR")
         self.app.notify(str(exc), severity="error", timeout=10)
 
+    def update_connection_status(self, check=False):
+        connection = self.controller.connection_status(self.account)
+        if (
+            check
+            and connection.status == "unknown"
+            and self.account
+            and self.account not in self._checking_accounts
+            and not self.app._jobs
+        ):
+            self._checking_accounts.add(self.account)
+            self._check_account_connection(self.account)
+        indicator = self.query_one("#account-connection", Static)
+        if connection.status == "connected":
+            indicator.update(f"● Connected · {connection.identity.split('|', 1)[0]}")
+            indicator.set_classes("connection-connected")
+            checked = (
+                datetime.fromisoformat(connection.checked_at)
+                .astimezone()
+                .strftime("%Y-%m-%d %H:%M")
+            )
+            detail = (
+                f"Connected to: {connection.identity}. Last verified: {checked}. "
+                "Connections open on demand for each operation. "
+                "Use Accounts → Edit selected → Save changes to refresh access."
+            )
+        elif connection.status == "checking" or self.account in self._checking_accounts:
+            indicator.update("◌ Checking saved account connection…")
+            indicator.set_classes("connection-checking")
+            detail = "Verifying saved credentials without opening a sign-in screen."
+        elif connection.status == "error":
+            indicator.update(f"○ Connection failed · {connection.error}")
+            indicator.set_classes("connection-error")
+            detail = f"{connection.error}. Edit and save this account in Accounts to retry."
+        else:
+            indicator.update("○ Not connected" if self.account else "No account selected")
+            indicator.set_classes("connection-unknown")
+            detail = "Add an account, or edit and save this account in Accounts to sign in."
+        indicator.tooltip = detail
+        accounts = getattr(self.app, "accounts", None)
+        if accounts is not None and accounts.is_mounted:
+            accounts.show_summary()
+
+    @work(group="account-connection-checks", exit_on_error=False)
+    async def _check_account_connection(self, alias: str):
+        try:
+            await asyncio.to_thread(self.controller.check_connection, alias)
+        except Exception:  # noqa: BLE001 -- the controller records vendor-specific connection errors
+            self.log_activity(f"Could not verify the saved connection for {alias}", "WARN")
+        finally:
+            self._checking_accounts.discard(alias)
+            if self.is_mounted:
+                self.update_busy_controls()
+
     def update_busy_controls(self):
+        self.update_connection_status(check=True)
         self.query_one("#account-picker", Select).disabled = self.busy
-        self.query_one("#connect", Button).disabled = self.busy
         # Scan is always available — allows spawning multiple scans
         self.query_one("#apply", Button).disabled = self.busy or self.state.run is None
         self.query_one("#stop", Button).disabled = not self.busy
@@ -532,6 +593,7 @@ class WorkspaceScreen(Static):
         return self.app.start_job(kind, operation, context or {}, label=label)
 
     def job_progress(self, event: JobProgress):
+        self.update_connection_status()
         data = event.payload
         if data.get("event") == "activity":
             text = data["message"]
@@ -575,13 +637,6 @@ class WorkspaceScreen(Static):
                 f"Apply: {report['succeeded']} succeeded · {report['failed']} failed · "
                 f"{report['skipped']} skipped" + (" · stopped" if report.get("stopped") else "")
             )
-        elif event.kind == "connect":
-            account, identity = event.result
-            self.account = account
-            picker = self.query_one("#account-picker", Select)
-            picker.value = account
-            self.log_activity(identity)
-            self.refresh_runs()
         if not event.error:
             self.log_activity(f"Job #{event.job_id} ({event.kind}) completed")
             if event.kind == "scan":
@@ -648,27 +703,6 @@ class WorkspaceScreen(Static):
             ScanScreen(list(self.controller.settings.accounts), self.account), chosen
         )
 
-    def action_connect(self):
-        if self.busy:
-            return
-        if not self.controller.settings.accounts:
-            self.app.notify("Add an account from the Accounts screen first")
-            return
-
-        def chosen(selection):
-            if selection:
-                account, write = selection
-                self.start_job(
-                    "connect",
-                    lambda progress, stop: (
-                        account,
-                        self.controller.connect(account, write, progress),
-                    ),
-                    label=f"Connect {account}",
-                )
-
-        self.app.push_screen(ConnectScreen(self.controller.settings.accounts, self.account), chosen)
-
     def quick_review(self, approval: Approval):
         if self.busy or self.state.run is None:
             return
@@ -710,7 +744,9 @@ class WorkspaceScreen(Static):
         if self.has_class("show-detail") or self._narrow_detail:
             current_msg = self.state.current()
             if current_msg:
-                all_actions = {a.proposal.id for a in current_msg.actions if ReviewService.reviewable(a)}
+                all_actions = {
+                    a.proposal.id for a in current_msg.actions if ReviewService.reviewable(a)
+                }
                 if all_actions:
                     self.save_decisions(run.id, all_actions, approval)
                     return
@@ -867,18 +903,5 @@ class WorkspaceScreen(Static):
         else:
             self.action_open_detail()
 
-
     def action_help(self):
         self.app.push_screen(HelpScreen())
-
-    def action_quit(self):
-        if self.busy:
-            def chosen(stop):
-                if stop:
-                    self.app.quit_after_job = True
-                    self.app.request_stop()
-
-            self.app.push_screen(QuitScreen(), chosen)
-        else:
-            self.controller.activate_run(None)
-            self.app.exit()

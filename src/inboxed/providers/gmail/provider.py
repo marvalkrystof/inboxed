@@ -1,15 +1,17 @@
 import random
 import time
 
+from inboxed.config import validate_folder_name
 from inboxed.domain.entities import MessageRef
-from inboxed.domain.errors import ProviderError
+from inboxed.domain.errors import AuthenticationError, ProviderError
 from inboxed.ports.mail_provider import InboxPage, ProviderCapabilities
+
 from .parsing import parse_message
 
 
 class GmailProvider:
     name = "gmail"
-    capabilities = ProviderCapabilities()
+    capabilities = ProviderCapabilities(folders=True, move=True)
 
     def __init__(self, credentials=None, service=None):
         if service is None:
@@ -43,6 +45,10 @@ class GmailProvider:
                     continue
                 if status == 404:
                     return None
+                if status == 401:
+                    raise AuthenticationError(
+                        "Google sign-in expired or was revoked. Sign in again"
+                    ) from exc
                 raise ProviderError(f"Gmail request failed (HTTP {status})") from exc
             except (TimeoutError, ConnectionError, OSError) as exc:
                 if attempt < 3:
@@ -143,6 +149,48 @@ class GmailProvider:
     def trash(self, ref):
         self._check(ref)
         self._write(self.service.users().messages().trash(userId="me", id=ref.message_id))
+
+    def list_folders(self):
+        data = self._execute(self.service.users().labels().list(userId="me"))
+        if data is None:
+            raise ProviderError("Cannot list Gmail folders")
+        return sorted(
+            (label["name"] for label in data.get("labels", []) if label.get("type") == "user"),
+            key=str.casefold,
+        )
+
+    def create_folder(self, name):
+        validate_folder_name(name)
+        if name.casefold() == "inbox" or name.startswith(("\\", "[Gmail]", "[GoogleMail]")):
+            raise ProviderError("Choose a non-system Gmail folder name")
+        if name not in self.list_folders():
+            self.create_label(name)
+        return name
+
+    def is_in_folder(self, ref, folder):
+        identifier = self.list_labels().get(folder)
+        current = self.get_message(ref)
+        return current is not None and identifier is not None and identifier in current.labels
+
+    def move_to_folder(self, ref, folder):
+        self._check(ref)
+        if folder not in self.list_folders():
+            raise ProviderError("Destination folder no longer exists; choose an existing folder")
+        identifier = self.list_labels().get(folder)
+        if identifier is None:
+            raise ProviderError("Destination folder no longer exists")
+        self._write(
+            self.service.users()
+            .messages()
+            .modify(
+                userId="me",
+                id=ref.message_id,
+                body={"addLabelIds": [identifier], "removeLabelIds": ["INBOX"]},
+            )
+        )
+        current = self.get_message(ref)
+        if current is None or current.in_inbox or identifier not in current.labels:
+            raise ProviderError("Could not verify the Gmail folder move; refresh before retrying")
 
     def close(self):
         self.service.close()

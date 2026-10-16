@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import re
 from email import policy
 from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
@@ -10,6 +11,61 @@ from inboxed.domain.errors import ProviderError
 from inboxed.providers.text import decode_mail_text, html_text
 
 KEYWORD_PREFIX = "inboxed_"
+
+
+def gmail_labels(rows) -> tuple[str, ...]:
+    """Read Gmail's IMAP label list, including quoted strings and literals."""
+    parts = []
+    for row in rows or []:
+        if isinstance(row, tuple) and len(row) == 2:
+            prefix, literal = row
+            if isinstance(prefix, bytes) and isinstance(literal, bytes):
+                parts.append(prefix + b"\r\n" + literal)
+        elif isinstance(row, bytes):
+            parts.append(row)
+    data = b" ".join(parts)
+    match = re.search(rb"\bX-GM-LABELS\s+\(", data, re.IGNORECASE)
+    if not match:
+        raise ProviderError("Gmail did not return message labels")
+    offset = match.end()
+    labels = []
+    try:
+        while offset < len(data):
+            if data[offset : offset + 1].isspace():
+                offset += 1
+                continue
+            if data[offset] == ord(")"):
+                return tuple(labels)
+            if data[offset] == ord('"'):
+                offset += 1
+                value = bytearray()
+                while data[offset] != ord('"'):
+                    if data[offset] == ord("\\"):
+                        offset += 1
+                    value.append(data[offset])
+                    offset += 1
+                offset += 1
+                token = bytes(value)
+            elif data[offset] == ord("{"):
+                literal = re.match(rb"\{(\d+)\}\r\n", data[offset:])
+                if literal is None:
+                    raise ValueError("Invalid label literal")
+                offset += literal.end()
+                length = int(literal[1])
+                token = data[offset : offset + length]
+                if len(token) != length:
+                    raise ValueError("Incomplete label literal")
+                offset += length
+            else:
+                atom = re.match(rb"[^\s()]+", data[offset:])
+                if atom is None:
+                    raise ValueError("Invalid label atom")
+                token = atom[0]
+                offset += atom.end()
+            labels.append(mailbox_text(token.decode("ascii")))
+    except (IndexError, ValueError, UnicodeError) as exc:
+        raise ProviderError("Gmail returned an invalid message label list") from exc
+    raise ProviderError("Gmail returned an incomplete message label list")
 
 
 def encode_ref(validity: str, uid: str, rfc_id: str = "", fingerprint: str = "") -> str:

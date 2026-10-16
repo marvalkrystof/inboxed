@@ -1,20 +1,22 @@
 import hashlib
 import json
 from collections import OrderedDict
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from threading import Lock
 
 from inboxed import bootstrap
-from inboxed.config import Settings
+from inboxed.config import AccountConfig, Settings, load_settings, save_account_config
 from inboxed.domain.actions import ActionKind
-from inboxed.domain.entities import Run
-from inboxed.domain.errors import InboxedError
-from inboxed.providers.gmail.auth import authenticate, token_path
+from inboxed.domain.entities import Run, now
+from inboxed.domain.errors import AuthenticationError, InboxedError, ProviderError
+from inboxed.providers.gmail.auth import authenticate, load_credentials, token_path
+from inboxed.providers.imap.config import IMAPConfig
 from inboxed.services.execution import ExecutionService
 from inboxed.services.review import ReviewService
 from inboxed.services.scanning import ScanService
 
-from .state import ScanRequest
+from .state import AccountConnection, ScanRequest
 
 
 class TUIController:
@@ -41,6 +43,171 @@ class TUIController:
         self._body_cache = OrderedDict()
         self._cache_lock = Lock()
         self._active_run = None
+        self._connection_lock = Lock()
+        self._connections: dict[str, tuple[str, AccountConnection]] = {}
+        self._session_locks: dict[str, Lock] = {}
+
+    def _connection_key(self, settings, alias):
+        account = settings.accounts.get(alias)
+        if account is None:
+            return None
+        token_version = None
+        if account.provider == "gmail":
+            try:
+                stat = token_path(self.data_dir, alias).stat()
+                token_version = (stat.st_mtime_ns, stat.st_size)
+            except (OSError, InboxedError):
+                pass
+        # Routing/model changes do not change the mailbox connection. Keep only
+        # a fingerprint of connection settings, never another password copy.
+        return hashlib.sha256(
+            json.dumps(
+                {
+                    "provider": account.provider,
+                    "options": account.options,
+                    "credentials_file": account.credentials_file,
+                    "token": token_version,
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+
+    def connection_status(self, alias: str) -> AccountConnection:
+        key = self._connection_key(self.settings, alias)
+        if key is None:
+            return AccountConnection(status="unconfigured")
+        with self._connection_lock:
+            saved = self._connections.get(alias)
+        if saved and saved[0] == key:
+            return saved[1]
+        account = self.settings.accounts[alias]
+        if account.provider == "gmail":
+            try:
+                if not token_path(self.data_dir, alias).exists():
+                    return AccountConnection(status="disconnected")
+            except InboxedError:
+                return AccountConnection(status="disconnected")
+        return AccountConnection()
+
+    def forget_connection(self, alias: str):
+        with self._connection_lock:
+            self._connections.pop(alias, None)
+
+    def _record_connection(self, settings, alias, result):
+        key = self._connection_key(settings, alias)
+        if key is not None and key == self._connection_key(self.settings, alias):
+            with self._connection_lock:
+                self._connections[alias] = (key, result)
+
+    @contextmanager
+    def _mail_session(self, settings, alias, write=False, progress=None):
+        with self._connection_lock:
+            auth_lock = self._session_locks.setdefault(alias, Lock())
+        with ExitStack() as stack:
+            # Serialize credential loading/refresh during a background check
+            # and a user operation on the same account.
+            with auth_lock:
+                try:
+                    provider = stack.enter_context(
+                        self.provider_session(settings, alias, self.data_dir, write=write)
+                    )
+                    identity = provider.account_identity()
+                except Exception as exc:
+                    self._record_connection(
+                        settings,
+                        alias,
+                        AccountConnection(
+                            status="error",
+                            checked_at=now(),
+                            error=str(exc)
+                            if isinstance(exc, InboxedError)
+                            else "Could not verify the mailbox connection",
+                        ),
+                    )
+                    if progress:
+                        progress(
+                            {"event": "activity", "message": f"Connection check failed: {alias}"}
+                        )
+                    raise
+                self._record_connection(
+                    settings,
+                    alias,
+                    AccountConnection(
+                        status="connected",
+                        identity=identity,
+                        checked_at=now(),
+                    ),
+                )
+            if progress:
+                progress({"event": "activity", "message": f"Connected to mailbox: {alias}"})
+            yield provider
+
+    def check_connection(self, alias: str):
+        """Verify saved credentials without opening a browser or requesting access."""
+        settings = self.settings
+        self._record_connection(settings, alias, AccountConnection(status="checking"))
+        with self._mail_session(settings, alias) as provider:
+            return provider.account_identity()
+
+    def save_verified_account(self, path: Path, alias: str, account: dict, original=None):
+        """Verify access first; only then add or update the account in configuration."""
+        token = token_path(self.data_dir, alias)  # Validate aliases before using local paths.
+        current = load_settings(path)
+        existing = current.accounts.get(alias)
+        if original is None and existing is not None:
+            raise InboxedError(f"Account already exists: {alias}")
+        if original is not None and existing != original:
+            raise InboxedError("This account changed; reopen its settings before saving")
+        entry = AccountConfig.model_validate(account)
+        if entry.provider == "imap":
+            IMAPConfig.model_validate(entry.options)
+        elif entry.provider != "gmail":
+            raise InboxedError("Provider must be gmail or imap")
+        data = current.model_dump()
+        data["accounts"][alias] = entry.model_dump()
+        candidate = Settings.model_validate(data)
+        if entry.provider == "gmail":
+            from google.auth.exceptions import GoogleAuthError
+
+            with self._connection_lock:
+                auth_lock = self._session_locks.setdefault(alias, Lock())
+            with auth_lock:
+                if original is None:
+                    authenticate(token, write=True)
+                else:
+                    try:
+                        load_credentials(token, write=True)
+                    except (ProviderError, GoogleAuthError, ValueError):
+                        authenticate(token, write=True)
+        try:
+            with self._mail_session(candidate, alias, write=True) as provider:
+                identity = provider.account_identity()
+        except AuthenticationError:
+            if entry.provider != "gmail":
+                raise
+            with auth_lock:
+                authenticate(token, write=True)
+            with self._mail_session(candidate, alias, write=True) as provider:
+                identity = provider.account_identity()
+        # Verification may take time, especially in the browser. Preserve edits
+        # made to other accounts/models and reject concurrent changes to this alias.
+        latest = load_settings(path)
+        if latest.accounts.get(alias) != existing:
+            raise InboxedError("This account changed during sign-in; reopen its settings")
+        save_account_config(
+            path, alias, entry.model_dump(exclude_none=True), replace_existing=original is not None
+        )
+        self.settings = load_settings(path)
+        self._record_connection(
+            self.settings,
+            alias,
+            AccountConnection(
+                status="connected",
+                identity=identity,
+                checked_at=now(),
+            ),
+        )
+        return identity
 
     def activate_run(self, run_id: str | None):
         with self._cache_lock:
@@ -50,6 +217,12 @@ class TUIController:
 
     def runs(self, account_alias: str) -> list[dict]:
         return [r for r in self.repository.list_runs() if r["account_alias"] == account_alias]
+
+    def mail_folders(self, alias: str) -> list[str]:
+        with self._mail_session(self.settings, alias) as provider:
+            if not provider.capabilities.folders:
+                raise InboxedError("This provider does not support folder management")
+            return provider.list_folders()
 
     def get_run(self, run_id: str, account_alias: str | None = None) -> Run:
         if run_id == "__all__":
@@ -99,11 +272,14 @@ class TUIController:
                         "message": "Opening Google sign-in; waiting for browser authorization",
                     }
                 )
-            authenticate(token_path(self.data_dir, account_alias), write)
+            with self._connection_lock:
+                auth_lock = self._session_locks.setdefault(account_alias, Lock())
+            with auth_lock:
+                authenticate(token_path(self.data_dir, account_alias), write)
         if progress:
             progress({"event": "activity", "message": f"Checking connection for {account_alias}"})
-        with self.provider_session(
-            self.settings, account_alias, self.data_dir, write=write
+        with self._mail_session(
+            self.settings, account_alias, write=write, progress=progress
         ) as provider:
             return f"Connected to {provider.account_identity()}"
 
@@ -130,9 +306,7 @@ class TUIController:
             self._tag_generator = self.tag_factory(self.settings)
         if progress:
             progress({"event": "activity", "message": f"Connecting to inbox: {request.account}"})
-        with self.provider_session(
-            self.settings, request.account, self.data_dir, write=False
-        ) as provider:
+        with self._mail_session(self.settings, request.account, progress=progress) as provider:
             return ScanService(
                 provider,
                 self._classifier,
@@ -164,9 +338,7 @@ class TUIController:
         message = next((m for m in run.messages if m.ref.message_id == message_id), None)
         if message is None:
             raise InboxedError("Email is no longer in this saved run")
-        with self.provider_session(
-            bootstrap.run_settings(run), run.account_alias, self.data_dir, write=False
-        ) as provider:
+        with self._mail_session(bootstrap.run_settings(run), run.account_alias) as provider:
             if provider.name != run.provider or provider.account_identity() != run.account:
                 raise InboxedError("This run belongs to a different mailbox")
             email = provider.get_message(message.ref)
@@ -215,12 +387,14 @@ class TUIController:
             total_messages = set()
             counts = {k.value: 0 for k in ActionKind}
             tokens = []
+            run_tokens = {}
             account_id = ""
             for r_info in self.runs(account_alias):
                 r = self.repository.load(r_info["id"])
                 p = ExecutionService.preview(r, auto)
                 account_id = p["account"]
                 tokens.append(p["token"])
+                run_tokens[r.id] = p["token"]
                 for act in p["actions"]:
                     all_actions.append(act)
                     total_messages.add(act["message_id"])
@@ -233,11 +407,17 @@ class TUIController:
                 "actions": all_actions,
                 "messages": len(total_messages),
                 "counts": counts,
+                "run_tokens": run_tokens,
             }
         return ExecutionService.preview(self.repository.load(run_id), auto)
 
     def apply(self, run_id, preview, progress=None, stop=None, account_alias: str | None = None):
+        if progress:
+            progress({"event": "activity", "message": "Loading approved actions"})
         if run_id == "__all__" and account_alias:
+            if self.preview(run_id, preview["auto"], account_alias)["token"] != preview["token"]:
+                raise InboxedError("Approvals or proposals changed; refresh the execution preview")
+            expected_tokens = preview["run_tokens"]
             combined_report = {
                 "run_id": "__all__",
                 "succeeded": 0,
@@ -245,20 +425,31 @@ class TUIController:
                 "skipped": 0,
                 "stopped": False,
             }
-            for r_info in self.runs(account_alias):
+            for saved_run_id, expected_token in expected_tokens.items():
                 if stop and stop():
                     combined_report["stopped"] = True
                     break
-                r = self.repository.load(r_info["id"])
+                r = self.repository.load(saved_run_id)
                 r_prev = ExecutionService.preview(r, preview["auto"])
+                if r_prev["token"] != expected_token:
+                    raise InboxedError(
+                        "Approvals or proposals changed; refresh the execution preview"
+                    )
                 if r_prev["actions"]:
-                    with self.provider_session(
-                        bootstrap.run_settings(r), r.account_alias, self.data_dir, write=True
+                    if progress:
+                        progress(
+                            {
+                                "event": "activity",
+                                "message": f"Connecting to mailbox for Apply: {r.account_alias}",
+                            }
+                        )
+                    with self._mail_session(
+                        bootstrap.run_settings(r), r.account_alias, write=True, progress=progress
                     ) as provider:
                         rep = ExecutionService(provider, self.repository).apply(
                             r,
                             auto=r_prev["auto"],
-                            expected_preview=r_prev["token"],
+                            expected_preview=expected_token,
                             progress=progress,
                             stop=stop,
                         )
@@ -270,8 +461,15 @@ class TUIController:
                             break
             return combined_report
         run = self.repository.load(run_id)
-        with self.provider_session(
-            bootstrap.run_settings(run), run.account_alias, self.data_dir, write=True
+        if progress:
+            progress(
+                {
+                    "event": "activity",
+                    "message": f"Connecting to mailbox for Apply: {run.account_alias}",
+                }
+            )
+        with self._mail_session(
+            bootstrap.run_settings(run), run.account_alias, write=True, progress=progress
         ) as provider:
             return ExecutionService(provider, self.repository).apply(
                 run,

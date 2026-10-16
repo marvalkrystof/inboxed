@@ -6,6 +6,10 @@ class ProviderError(InboxedError):
     pass
 
 
+class AuthenticationError(ProviderError):
+    """The provider needs renewed authorization rather than an operation retry."""
+
+
 class ModelError(InboxedError):
     pass
 

@@ -1,8 +1,8 @@
-from collections.abc import Callable
 import hashlib
 import json
+from collections.abc import Callable
 
-from inboxed.config import Settings
+from inboxed.config import Settings, validate_folder_name
 from inboxed.domain.actions import ActionKind, Approval, Execution
 from inboxed.domain.entities import ActionState, MessageDecision, Run, now
 from inboxed.domain.errors import CapabilityError, InboxedError
@@ -24,6 +24,8 @@ class ExecutionService:
             return False
         if action.approval == Approval.APPROVED:
             return True
+        if action.proposal.kind == ActionKind.MOVE:
+            return False  # Folder moves always require approval of the saved destination.
         result = message.classification
         if not auto or action.proposal.generated or message.error or message.uncertain_input:
             return False
@@ -47,6 +49,8 @@ class ExecutionService:
                 "message_id": m.ref.message_id,
                 "action": a.proposal.kind.value,
                 "label": a.proposal.label,
+                "folder": a.proposal.folder,
+                "create_folder": a.proposal.kind == ActionKind.MOVE,
             }
             for m in run.messages
             for a in m.actions
@@ -77,6 +81,8 @@ class ExecutionService:
         stop: Callable[[], bool] | None = None,
         expected_preview: str | None = None,
     ) -> dict:
+        if progress:
+            progress({"event": "activity", "message": "Checking saved actions before Apply"})
         with self.repository.mutation_lock(run.id):
             latest = self.repository.load(run.id)
             refresh_run(run, latest)
@@ -111,6 +117,23 @@ class ExecutionService:
             capability = "labels" if a.proposal.kind == ActionKind.LABEL else a.proposal.kind.value
             if not getattr(self.provider.capabilities, capability):
                 raise CapabilityError(f"Provider does not support {capability}")
+        moves = [a for _, a in candidates if a.proposal.kind == ActionKind.MOVE]
+        folders_to_create = set()
+        if moves:
+            if progress:
+                progress({"event": "activity", "message": "Checking destination folders"})
+            folders = set(self.provider.list_folders())
+            if any(not a.proposal.folder for a in moves):
+                raise InboxedError(
+                    "A folder move has no destination; update routing and scan again"
+                )
+            for action in moves:
+                validate_folder_name(action.proposal.folder)
+            folders_to_create = {
+                a.proposal.folder for a in moves if a.proposal.folder not in folders
+            }
+            if folders_to_create and not self.provider.capabilities.folders:
+                raise CapabilityError("Provider does not support folder creation")
         if dry_run:
             return {
                 "run_id": run.id,
@@ -120,11 +143,15 @@ class ExecutionService:
                         "message_id": m.ref.message_id,
                         "action": a.proposal.kind.value,
                         "label": a.proposal.label,
+                        "folder": a.proposal.folder,
+                        "create_folder": a.proposal.kind == ActionKind.MOVE,
                     }
                     for m, a in candidates
                 ],
             }
         report = {"run_id": run.id, "succeeded": 0, "failed": 0, "skipped": 0}
+        if progress:
+            progress({"event": "activity", "message": "Reading mailbox labels for Apply"})
         label_map = (
             self.provider.list_labels()
             if any(a.proposal.kind == ActionKind.LABEL for _, a in candidates)
@@ -134,7 +161,16 @@ class ExecutionService:
         self.repository.save(run)
         stopped = False
         try:
+            for folder in sorted(folders_to_create):
+                if stop and stop():
+                    stopped = True
+                    break
+                if progress:
+                    progress({"event": "activity", "message": f"Creating folder: {folder}"})
+                self.provider.create_folder(folder)
             for message in run.messages:
+                if stopped:
+                    break
                 blocked = False
                 actions = sorted(message.actions, key=lambda a: a.proposal.kind != ActionKind.LABEL)
                 for state in actions:
@@ -149,6 +185,15 @@ class ExecutionService:
                     if blocked and p.kind != ActionKind.LABEL:
                         continue
                     try:
+                        if progress:
+                            progress(
+                                {
+                                    "event": "activity",
+                                    "message": f"Checking email before {p.kind.value}",
+                                    "run_id": run.id,
+                                    "message_id": message.ref.message_id,
+                                }
+                            )
                         current = self.provider.get_message(message.ref)
                         if current is None:
                             state.execution = Execution.SKIPPED
@@ -170,6 +215,11 @@ class ExecutionService:
                             (p.kind == ActionKind.LABEL and label_id in current.labels)
                             or (p.kind == ActionKind.ARCHIVE and not current.in_inbox)
                             or (p.kind == ActionKind.TRASH and "TRASH" in current.labels)
+                            or (
+                                p.kind == ActionKind.MOVE
+                                and not current.in_inbox
+                                and self.provider.is_in_folder(message.ref, p.folder)
+                            )
                         )
                         if fulfilled:
                             state.execution = Execution.SUCCEEDED
@@ -184,12 +234,29 @@ class ExecutionService:
                         ):
                             state.execution = Execution.SKIPPED
                             state.approval = Approval.PENDING
-                            state.error = "Message left inbox; approve again to move it to Trash"
+                            state.error = (
+                                "Message left inbox; approve again to move it to the selected folder"
+                                if p.kind == ActionKind.MOVE
+                                else "Message left inbox; approve again to move it to Trash"
+                            )
                             report["skipped"] += 1
                             continue
                         state.execution = Execution.RUNNING
                         state.error = None
                         self.repository.save(run)
+                        if progress:
+                            progress(
+                                {
+                                    "event": "activity",
+                                    "message": (
+                                        f"Moving email to {p.folder}"
+                                        if p.kind == ActionKind.MOVE
+                                        else f"Applying {p.kind.value} to email"
+                                    ),
+                                    "run_id": run.id,
+                                    "message_id": message.ref.message_id,
+                                }
+                            )
                         if p.kind == ActionKind.LABEL:
                             if label_id is None:
                                 label_id = self.provider.create_label(p.label)
@@ -197,6 +264,8 @@ class ExecutionService:
                             self.provider.apply_label(message.ref, label_id)
                         elif p.kind == ActionKind.ARCHIVE:
                             self.provider.archive(message.ref)
+                        elif p.kind == ActionKind.MOVE:
+                            self.provider.move_to_folder(message.ref, p.folder)
                         else:
                             self.provider.trash(message.ref)
                         state.execution = Execution.SUCCEEDED
@@ -237,6 +306,9 @@ class ExecutionService:
                 and not any(m.error for m in run.messages)
                 else "pending"
             )
+        except (InboxedError, OSError, ValueError):
+            run.status = "pending"
+            raise
         finally:
             self.repository.save(run)
         return report
