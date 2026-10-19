@@ -51,16 +51,9 @@ class ClassificationResult:
 
 
 @dataclass(frozen=True)
-class TagSuggestion:
-    name: str
-    model: str
-
-
-@dataclass(frozen=True)
 class ProposedAction:
     kind: ActionKind
     label: str | None = None
-    generated: bool = False
     id: str = field(default_factory=lambda: uuid4().hex)
     folder: str | None = None
     create_folder: bool = False
@@ -87,7 +80,6 @@ class MessageDecision:
     subject: str
     preview: str
     classification: ClassificationResult | None = None
-    tags: list[TagSuggestion] = field(default_factory=list)
     actions: list[ActionState] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
@@ -120,11 +112,13 @@ class Run:
             d["ref"] = MessageRef(**d["ref"])
             if d.get("classification"):
                 d["classification"] = ClassificationResult(**d["classification"])
-            d["tags"] = [TagSuggestion(**t) for t in d.get("tags", [])]
+            d.pop("tags", None)  # Retired metadata in older saved runs.
             states = []
             for original in d.get("actions", []):
                 a = dict(original)
                 p = dict(a["proposal"])
+                if p.pop("generated", False):
+                    continue  # Retired keyword proposals must never execute.
                 p["kind"] = ActionKind(p["kind"])
                 a["proposal"] = ProposedAction(**p)
                 a["approval"] = Approval(a["approval"])

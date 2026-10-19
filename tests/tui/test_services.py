@@ -11,7 +11,7 @@ from inboxed.services.review import ReviewService
 from inboxed.storage.sqlite import SQLiteRunRepository
 from inboxed.tui.controller import TUIController
 from inboxed.tui.state import Filters, ScanRequest, WorkspaceState, selected_action_ids
-from tests.helpers import FakeClassifier, FakeProvider, FakeTags, email, settings
+from tests.helpers import FakeClassifier, FakeProvider, email, settings
 
 
 class TUIServiceTests(unittest.TestCase):
@@ -34,7 +34,6 @@ class TUIServiceTests(unittest.TestCase):
             self.repo,
             session,
             lambda _: FakeClassifier(),
-            lambda _: FakeTags(),
         )
         self.run = self.controller.scan(ScanRequest("personal"))
         self.controller.activate_run(self.run.id)
@@ -49,12 +48,13 @@ class TUIServiceTests(unittest.TestCase):
     def test_stale_run_does_not_overwrite_other_approvals(self):
         first = self.repo.load(self.run.id)
         second = self.repo.load(self.run.id)
-        action1, action2 = first.messages[0].actions
+        action1 = first.messages[0].actions[0]
+        action2 = first.messages[1].actions[0]
         ReviewService(self.repo).decide(first, 0, action1.proposal.id, Approval.APPROVED)
-        ReviewService(self.repo).decide(second, 0, action2.proposal.id, Approval.REJECTED)
+        ReviewService(self.repo).decide(second, 1, action2.proposal.id, Approval.REJECTED)
         saved = self.repo.load(first.id)
         self.assertEqual(saved.messages[0].actions[0].approval, Approval.APPROVED)
-        self.assertEqual(saved.messages[0].actions[1].approval, Approval.REJECTED)
+        self.assertEqual(saved.messages[1].actions[0].approval, Approval.REJECTED)
 
     def test_atomic_batch_validates_every_id_before_saving(self):
         first = self.run.messages[0].actions[0].proposal.id
@@ -87,7 +87,7 @@ class TUIServiceTests(unittest.TestCase):
         self.assertEqual(preview["counts"]["trash"], 15)
         self.assertEqual(preview["messages"], 15)
         result = self.controller.apply(self.run.id, preview)
-        self.assertEqual(result["succeeded"], 30)
+        self.assertEqual(result["succeeded"], 15)
         self.assertTrue(self.sessions[-1])
 
     def test_preview_is_offline(self):
@@ -115,7 +115,8 @@ class TUIServiceTests(unittest.TestCase):
         stop = Event()
 
         def progress(event):
-            stop.set()
+            if event["event"] == "action_finished":
+                stop.set()
 
         preview = self.controller.preview(self.run.id)
         result = self.controller.apply(self.run.id, preview, progress, stop.is_set)
@@ -123,10 +124,10 @@ class TUIServiceTests(unittest.TestCase):
         self.assertEqual(result["succeeded"], 1)
         saved = self.repo.load(self.run.id)
         self.assertEqual(saved.messages[0].actions[0].execution, Execution.SUCCEEDED)
-        self.assertEqual(saved.messages[0].actions[1].execution, Execution.PENDING)
-        self.assertFalse(any(w[0] == "trash" for w in self.provider.writes))
+        self.assertEqual(saved.messages[1].actions[0].execution, Execution.PENDING)
+        self.assertEqual(len([w for w in self.provider.writes if w[0] == "trash"]), 1)
         result = self.controller.apply(self.run.id, self.controller.preview(self.run.id))
-        self.assertEqual(result["succeeded"], 29)
+        self.assertEqual(result["succeeded"], 14)
 
     def test_body_fetch_is_read_only_cached_and_not_persisted(self):
         before = self.repo.load(self.run.id).to_dict()
@@ -160,7 +161,7 @@ class TUIServiceTests(unittest.TestCase):
         self.assertEqual(len(state.visible()), 15)
         state.highlighted = "0"
         state.toggle_selected()
-        ids = selected_action_ids(state.run, state.selected, {"class_labels"})
+        ids = selected_action_ids(state.run, state.selected, {"trash"})
         self.assertEqual(len(ids), 1)
         self.assertEqual(state.run.messages[0].actions[0].proposal.id, next(iter(ids)))
         state.select_filtered()

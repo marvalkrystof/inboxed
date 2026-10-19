@@ -7,8 +7,7 @@ from inboxed.domain.errors import ModelError
 from inboxed.ports.classifier import Classifier
 from inboxed.ports.mail_provider import MailProvider
 from inboxed.ports.run_repository import RunRepository
-from inboxed.ports.tag_generator import TagGenerator
-from inboxed.services.policy import CLASS_PREFIX, TAG_PREFIX, PolicyService
+from inboxed.services.policy import PolicyService
 
 Progress = Callable[[dict], None]
 SAVED_PREVIEW_LIMIT = 2000
@@ -20,12 +19,10 @@ class ScanService:
         provider: MailProvider,
         classifier: Classifier,
         repository: RunRepository,
-        tag_generator: TagGenerator | None = None,
     ):
         self.provider = provider
         self.classifier = classifier
         self.repository = repository
-        self.tag_generator = tag_generator
 
     def scan(
         self,
@@ -67,21 +64,14 @@ class ScanService:
                     )
                 except Exception as exc:
                     run.errors.append(f"Cannot read approved exemplars: {exc}")
-            existing_tags = []
             inboxed_label_ids = set()
-            if self.tag_generator or skip_processed:
+            if skip_processed:
                 try:
                     if progress:
                         progress({"event": "activity", "message": "Reading mailbox labels"})
                     labels = self.provider.list_labels()
-                    if self.tag_generator:
-                        existing_tags = [
-                            n[len(TAG_PREFIX) :] for n in labels if n.startswith(TAG_PREFIX)
-                        ]
                     for name, identifier in labels.items():
-                        if skip_processed and name.startswith(
-                            (CLASS_PREFIX, TAG_PREFIX, "Inboxed/")
-                        ):
+                        if name.startswith(("Inboxed/", "Inboxed - ")):
                             inboxed_label_ids.add(identifier)
                             inboxed_label_ids.add(name)
                 except Exception as exc:
@@ -122,7 +112,10 @@ class ScanService:
                             if skip_processed and message.labels:
                                 is_processed = any(
                                     lbl in inboxed_label_ids
-                                    or (isinstance(lbl, str) and lbl.startswith("Inboxed/"))
+                                    or (
+                                        isinstance(lbl, str)
+                                        and lbl.startswith(("Inboxed/", "Inboxed - "))
+                                    )
                                     for lbl in message.labels
                                 )
                                 if is_processed:
@@ -182,34 +175,12 @@ class ScanService:
                             decision.uncertain_input |= result.truncated
                             if result.truncated:
                                 decision.warnings.append("Model input was truncated")
-                            if self.tag_generator:
-                                try:
-                                    if progress:
-                                        progress(
-                                            {
-                                                "event": "activity",
-                                                "message": f"Generating tags for email {len(run.messages) + 1}",
-                                            }
-                                        )
-                                    decision.tags = self.tag_generator.suggest(
-                                        message, existing_tags
-                                    )
-                                except Exception as exc:
-                                    decision.warnings.append(f"Tag generation failed: {exc}")
                             decision.actions = PolicyService().propose(
                                 result,
                                 classes,
-                                decision.tags,
-                                folder_routes=(
-                                    settings.accounts[account_alias].folder_routes
-                                    if settings.accounts[account_alias].organization == "folders"
-                                    else None
-                                ),
+                                folder_routes=settings.accounts[account_alias].folder_routes,
                             )
-                            if (
-                                settings.accounts[account_alias].organization == "folders"
-                                and not decision.actions
-                            ):
+                            if not decision.actions:
                                 decision.warnings.append(
                                     "No destination configured for this class; email stays in Inbox"
                                 )

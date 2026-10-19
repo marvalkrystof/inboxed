@@ -33,7 +33,7 @@ def interactive_review(run, repository, include_reviewed: bool = False) -> None:
         for warning in message.warnings:
             console.print(f"Warning: {warning}")
         choice = typer.prompt(
-            "[r]eview actions / [e]dit class and tags / [s]kip / [q]uit", default="r"
+            "[r]eview actions / [e]dit class / [s]kip / [q]uit", default="r"
         )
         if choice.lower() == "q":
             return
@@ -45,14 +45,8 @@ def interactive_review(run, repository, include_reviewed: bool = False) -> None:
                 "Primary class",
                 default=message.classification.class_id if message.classification else "other",
             )
-            tags = typer.prompt(
-                "Tags (comma-separated; blank removes all tags)",
-                default=", ".join(t.name for t in message.tags),
-            )
             try:
-                service.edit(
-                    run, index, selected, [t.strip() for t in tags.split(",") if t.strip()]
-                )
+                service.edit(run, index, selected)
             except InboxedError as exc:
                 console.print(str(exc))
                 continue

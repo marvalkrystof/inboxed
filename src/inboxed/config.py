@@ -37,9 +37,16 @@ class StrictModel(BaseModel):
 
 class AccountConfig(StrictModel):
     provider: Literal["imap"] = "imap"
-    organization: Literal["labels", "folders"] = "folders"
+    organization: Literal["folders"] = "folders"
     folder_routes: dict[str, str] = Field(default_factory=dict)
     options: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def use_folder_organization(cls, data):
+        if isinstance(data, dict) and data.get("organization") == "labels":
+            data = {**data, "organization": "folders"}
+        return data
 
     @model_validator(mode="after")
     def valid_folders(self):
@@ -143,7 +150,11 @@ def _save_model_sections(path: Path, updates: dict[str, dict]) -> None:
             match = headers.match(line.rstrip("\r\n"))
             if match:
                 section = match.group(1)
-                skip = any(section == name or section.startswith(name + ".") for name in updates)
+                skip = (
+                    section == "tags"
+                    or section.startswith("tags.")
+                    or any(section == name or section.startswith(name + ".") for name in updates)
+                )
             if not skip:
                 retained.append(line)
         blocks = []
@@ -180,34 +191,17 @@ def save_classifier_config(path: Path, classifier: ClassifierConfig) -> None:
     _save_model_sections(path, {"classifier": classifier.model_dump()})
 
 
-def save_tag_config(path: Path, tags: "TagConfig") -> None:
-    _save_model_sections(path, {"tags": tags.model_dump()})
-
-
-def save_model_configs(path: Path, classifier: ClassifierConfig, tags: "TagConfig") -> None:
-    _save_model_sections(path, {"classifier": classifier.model_dump(), "tags": tags.model_dump()})
-
-
-class TagConfig(StrictModel):
-    backend: str = "ollama"
-    endpoint: str = "http://localhost:11434"
-    model: str = "qwen2.5:3b"
-    timeout: float = Field(default=120, gt=0)
-    options: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def local_endpoint(self) -> "TagConfig":
-        if self.backend == "ollama":
-            validate_local_ollama_endpoint(self.endpoint)
-            validate_local_ollama_model(self.model)
-        return self
-
-
 class Settings(StrictModel):
     accounts: dict[str, AccountConfig]
     classes: list[ClassConfig] = Field(min_length=1)
     classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
-    tags: TagConfig = Field(default_factory=TagConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_retired_settings(cls, data):
+        if isinstance(data, dict):
+            data = {key: value for key, value in data.items() if key != "tags"}
+        return data
 
     @model_validator(mode="after")
     def unique_names(self) -> "Settings":
@@ -276,9 +270,7 @@ def save_account_config(
             retained.append("\n" if retained and not retained[-1].endswith("\n\n") else "")
             retained.append(f"[accounts.{alias}]\n")
             retained.append(f"provider = {json.dumps(account.get('provider', 'imap'))}\n")
-            retained.append(
-                f"organization = {json.dumps(account.get('organization', 'folders'))}\n"
-            )
+            retained.append(f"organization = {json.dumps('folders')}\n")
             retained.append(f"folder_routes = {_toml_value(account.get('folder_routes', {}))}\n")
             options = account.get("options", {})
             retained.append(f"\n[accounts.{alias}.options]\n")

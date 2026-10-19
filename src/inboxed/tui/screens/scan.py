@@ -26,7 +26,6 @@ class ScanScreen(Dialog):
             yield Input("100", id="scan-limit", placeholder="e.g. 100, or empty for whole inbox")
             yield Label("Provider query (IMAP SEARCH expression)")
             yield Input("", id="scan-query")
-            yield Checkbox("Suggest tags with local Ollama", value=False, id="scan-tags")
             yield Checkbox("Skip already processed emails", value=True, id="scan-skip-processed")
             yield Static("", id="scan-error", markup=False)
             with Horizontal(classes="dialog-buttons"):
@@ -55,7 +54,6 @@ class ScanScreen(Dialog):
                         str(self.query_one("#scan-account", Select).value),
                         limit,
                         self.query_one("#scan-query", Input).value.strip() or None,
-                        self.query_one("#scan-tags", Checkbox).value,
                         self.query_one("#scan-skip-processed", Checkbox).value,
                     )
                 )

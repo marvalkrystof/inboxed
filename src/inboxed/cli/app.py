@@ -143,14 +143,13 @@ def scan(
     all_emails: Annotated[
         bool, typer.Option("--all", help="Scan whole inbox without limit")
     ] = False,
-    generate_tags: Annotated[bool, typer.Option()] = False,
     provider_query: Annotated[str | None, typer.Option()] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
     skip_processed: Annotated[
         bool,
         typer.Option(
             "--skip-processed/--no-skip-processed",
-            help="Skip emails that already have Inboxed tags or labels",
+            help="Skip emails that already have Inboxed folder labels",
         ),
     ] = False,
 ):
@@ -158,7 +157,6 @@ def scan(
     settings = load_settings(ctx.obj.config)
     repo = unlocked_repository(ctx)
     classifier = bootstrap.build_classifier(settings)
-    tags = bootstrap.build_tag_generator(settings) if generate_tags else None
 
     def progress(event):
         if not json_output and "count" in event:
@@ -166,7 +164,7 @@ def scan(
 
     actual_limit = None if all_emails else limit
     with bootstrap.provider_session(settings, account, ctx.obj.data_dir) as provider:
-        run = ScanService(provider, classifier, repo, tags).scan(
+        run = ScanService(provider, classifier, repo).scan(
             settings,
             actual_limit,
             provider_query,

@@ -11,7 +11,7 @@ from inboxed.services.execution import ExecutionService
 from inboxed.services.review import ReviewService
 from inboxed.services.scanning import ScanService
 from inboxed.storage.sqlite import SQLiteRunRepository
-from tests.helpers import FakeClassifier, FakeProvider, FakeTags, email, settings
+from tests.helpers import FakeClassifier, FakeProvider, email, settings
 
 
 class WorkflowTests(unittest.TestCase):
@@ -21,8 +21,8 @@ class WorkflowTests(unittest.TestCase):
         self.repo = SQLiteRunRepository(Path(self.tmp.name) / "runs.sqlite3")
         self.provider = FakeProvider()
 
-    def scan(self, config=None, classifier=None, tags=None):
-        return ScanService(self.provider, classifier or FakeClassifier(), self.repo, tags).scan(
+    def scan(self, config=None, classifier=None):
+        return ScanService(self.provider, classifier or FakeClassifier(), self.repo).scan(
             config or settings(), account_alias="personal"
         )
 
@@ -36,19 +36,19 @@ class WorkflowTests(unittest.TestCase):
         return ExecutionService(self.provider, self.repo)
 
     def test_scan_review_apply_and_resume(self):
-        run = self.scan(tags=FakeTags())
+        run = self.scan()
         self.assertEqual(self.provider.writes, [])
         self.assertEqual(
             [a.proposal.kind for a in run.messages[0].actions],
-            [ActionKind.LABEL, ActionKind.LABEL, ActionKind.TRASH],
+            [ActionKind.TRASH],
         )
         self.assertEqual(self.executor().apply(run)["succeeded"], 0)
         self.approve_all(run)
         saved_before = self.repo.load(run.id).to_dict()
-        self.assertEqual(len(self.executor().apply(run, dry_run=True)["actions"]), 3)
+        self.assertEqual(len(self.executor().apply(run, dry_run=True)["actions"]), 1)
         self.assertEqual(self.provider.writes, [])
         self.assertEqual(self.repo.load(run.id).to_dict(), saved_before)
-        self.assertEqual(self.executor().apply(self.repo.load(run.id))["succeeded"], 3)
+        self.assertEqual(self.executor().apply(self.repo.load(run.id))["succeeded"], 1)
         self.assertIn("TRASH", self.provider.messages["1"].labels)
         writes = list(self.provider.writes)
         self.executor().apply(self.repo.load(run.id))
@@ -68,12 +68,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(len({m.ref.message_id for m in run.messages}), 5)
         self.assertEqual(run.status, "ready")
 
-    def test_automation_is_explicit_and_does_not_create_generated_tags(self):
-        run = self.scan(settings(automatic=True), tags=FakeTags())
+    def test_automation_requires_explicit_invocation(self):
+        run = self.scan(settings(automatic=True))
         self.assertEqual(self.executor().apply(run)["succeeded"], 0)
-        self.assertEqual(self.executor().apply(run, auto=True)["succeeded"], 2)
-        self.assertNotIn("Inboxed/Tag/Cycling", self.provider.labels)
-        self.assertEqual(run.messages[0].actions[1].approval, Approval.PENDING)
+        self.assertEqual(self.executor().apply(run, auto=True)["succeeded"], 1)
 
     def test_low_missing_confidence_and_uncertain_content_need_review(self):
         for confidence, truncated, body in [
@@ -105,11 +103,11 @@ class WorkflowTests(unittest.TestCase):
     def test_class_edit_invalidates_approvals(self):
         run = self.scan()
         self.approve_all(run)
-        ReviewService(self.repo).edit(run, 0, "other", [" Travel ", "travel"])
+        ReviewService(self.repo).edit(run, 0, "other")
         message = self.repo.load(run.id).messages[0]
         self.assertEqual(message.classification.class_id, "other")
         self.assertEqual(message.classification.confidence, None)
-        self.assertEqual(len(message.tags), 1)
+        self.assertEqual(message.actions[0].proposal.kind, ActionKind.MOVE)
         self.assertTrue(all(a.approval == Approval.PENDING for a in message.actions))
         self.assertFalse(any(a.proposal.kind == ActionKind.TRASH for a in message.actions))
 
@@ -122,14 +120,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(("trash", "1"), self.provider.writes)
         self.assertNotIn(("archive", "1"), self.provider.writes)
 
-    def test_lost_response_reconciled_before_retry(self):
-        run = self.scan()
+    def test_lost_move_response_reconciled_before_retry(self):
+        run = self.scan(settings(cleanup="none"))
         self.approve_all(run)
-        self.provider.lost_label_response = True
+        self.provider.lost_move_response = True
         self.assertEqual(self.executor().apply(run)["failed"], 1)
-        self.assertNotIn(("trash", "1"), self.provider.writes)
-        self.assertEqual(self.executor().apply(self.repo.load(run.id))["succeeded"], 2)
-        self.assertEqual(len([w for w in self.provider.writes if w[0] == "label"]), 1)
+        self.assertEqual(self.executor().apply(self.repo.load(run.id))["succeeded"], 1)
+        self.assertEqual(len([w for w in self.provider.writes if w[0] == "move"]), 1)
 
     def test_interruption_journal_resumes(self):
         run = self.scan()
@@ -160,23 +157,25 @@ class WorkflowTests(unittest.TestCase):
         run = self.scan()
         self.approve_all(run)
         del self.provider.messages["1"]
-        self.assertEqual(self.executor().apply(run)["skipped"], 2)
+        self.assertEqual(self.executor().apply(run)["skipped"], 1)
 
-    def test_label_failure_blocks_cleanup_but_not_other_messages(self):
+    def test_move_failure_does_not_block_other_messages(self):
         self.provider = FakeProvider([email("1"), email("2")])
-        original = self.provider.apply_label
+        original = self.provider.move_to_folder
 
-        def fail_one(ref, label):
+        def fail_one(ref, folder):
             if ref.message_id == "1":
                 raise RuntimeError("failed")
-            original(ref, label)
+            original(ref, folder)
 
-        self.provider.apply_label = fail_one
-        run = self.scan()
+        self.provider.move_to_folder = fail_one
+        run = self.scan(settings(cleanup="none"))
         self.approve_all(run)
-        self.executor().apply(run)
-        self.assertNotIn(("trash", "1"), self.provider.writes)
-        self.assertIn(("trash", "2"), self.provider.writes)
+        report = self.executor().apply(run)
+        self.assertEqual(report["failed"], 1)
+        self.assertEqual(report["succeeded"], 1)
+        self.assertTrue(self.provider.messages["1"].in_inbox)
+        self.assertFalse(self.provider.messages["2"].in_inbox)
 
     def test_identity_mismatch_and_capability_error_before_write(self):
         run = self.scan()
@@ -189,16 +188,6 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(CapabilityError):
             self.executor().apply(run)
         self.assertEqual(self.provider.writes, [])
-
-    def test_tag_error_keeps_classification(self):
-        class BrokenTags:
-            def suggest(self, *args):
-                raise RuntimeError("offline")
-
-        run = self.scan(tags=BrokenTags())
-        self.assertIsNotNone(run.messages[0].classification)
-        self.assertIsNone(run.messages[0].error)
-        self.assertIn("offline", run.messages[0].warnings[0])
 
     def test_unknown_class_has_no_actions(self):
         run = self.scan(classifier=FakeClassifier("unknown"))
@@ -215,13 +204,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(saved.status, "scan_failed")
         self.assertIn("offline", saved.errors[0])
 
-    def test_archive_and_case_insensitive_label_reuse(self):
+    def test_archive_uses_no_class_labels(self):
         self.provider.labels["inboxed/class/promotions"] = "existing"
         run = self.scan(settings(cleanup="archive"))
         self.approve_all(run)
         self.executor().apply(run)
         self.assertFalse(any(w[0] == "create" for w in self.provider.writes))
-        self.assertIn(("label", "1", "existing"), self.provider.writes)
+        self.assertFalse(any(w[0] == "label" for w in self.provider.writes))
         self.assertIn(("archive", "1"), self.provider.writes)
 
     def test_edit_after_execution_is_blocked(self):

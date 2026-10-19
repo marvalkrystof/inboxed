@@ -815,10 +815,10 @@ class WorkspaceScreen(Static):
             if result:
                 try:
                     self.controller.edit(
-                        run.id, message.ref.message_id, *result, account_alias=account_alias
+                        run.id, message.ref.message_id, result, account_alias=account_alias
                     )
                     self.log_activity(
-                        f"Class and tags edited for email {message.ref.message_id[:16]}"
+                        f"Class edited for email {message.ref.message_id[:16]}"
                     )
                     self.open_run(run.id)
                     self.refresh_runs()

@@ -15,7 +15,7 @@ class AccountConnection:
 
 def action_family(action) -> str:
     if action.proposal.kind.value == "label":
-        return "tags" if action.proposal.generated else "class_labels"
+        return "class_labels"
     return action.proposal.kind.value
 
 
@@ -132,5 +132,4 @@ class ScanRequest:
     account: str
     limit: int | None = 100
     query: str | None = None
-    generate_tags: bool = False
     skip_processed: bool = False

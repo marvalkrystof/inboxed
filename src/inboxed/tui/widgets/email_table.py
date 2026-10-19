@@ -12,9 +12,7 @@ class EmailTable(DataTable):
         self._shown_run_id = None
         self._shown_ids = ()
         self._shown_cells = {}
-        self._column_keys = self.add_columns(
-            "Select", "Sender", "Subject", "Class", "Tags", "Score"
-        )
+        self._column_keys = self.add_columns("Select", "Sender", "Subject", "Class", "Score")
         # Cells are updated in place after Apply; reserve the longest status
         # so a column first sized for "pending" does not clip "completed".
         self._column_keys.append(self.add_column("Status", width=len("completed")))
@@ -22,13 +20,11 @@ class EmailTable(DataTable):
     @staticmethod
     def _cells(message, selected):
         classification = message.classification
-        tags_str = ", ".join(t.name for t in message.tags) if message.tags else "—"
         return (
             Text("[x]" if selected else "[ ]"),
             Text(message.sender),
             Text(message.subject),
             classification.class_id if classification else "—",
-            Text(tags_str),
             f"{classification.confidence:.2f}"
             if classification and classification.confidence is not None
             else "—",

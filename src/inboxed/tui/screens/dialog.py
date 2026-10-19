@@ -18,7 +18,7 @@ class HelpScreen(Dialog):
             yield Static("Inboxed shortcuts", classes="dialog-title")
             yield Static(
                 "Arrows: navigate   Tab: switch panels   Space: select email\n"
-                "/: search   a/r: approve/reject   e: edit class and tags\n"
+                "/: search   a/r: approve/reject   e: edit class\n"
                 "n: scan   p: preview/apply   b: load full text\n"
                 "v: toggle email list/detail on narrow screens   l: toggle activity log   h: home\n"
                 "?: help   q: quit from any page   Ctrl+Q: quit while editing   Escape: close dialog\n\n"

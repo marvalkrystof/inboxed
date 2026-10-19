@@ -81,7 +81,7 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
 
         self.controller.scan(ScanRequest("personal"))
         self.controller.scan(ScanRequest("personal"))
-        async with self.app.run_test(size=(110, 34)) as pilot:
+        async with self.app.run_test(size=(160, 34)) as pilot:
             await self._switch_tab(pilot, "runs")
             await pilot.pause()
             table = self.app.query_one("#runs-table", SelectionList)

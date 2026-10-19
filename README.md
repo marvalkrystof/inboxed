@@ -4,7 +4,7 @@
 
 # Inboxed
 
-CLI and TUI for classifying email over IMAP with local AI models (Ollama), generating topic tags, and reviewing label, archive, and trash actions before applying them.
+CLI and TUI for classifying email over IMAP with local AI models (Ollama), reviewing folder moves, archive, and trash actions before applying them.
 
 [Website](https://inboxed.fyi/) · [Privacy policy](https://inboxed.fyi/privacy/) · [Terms of use](https://inboxed.fyi/terms/)
 
@@ -22,10 +22,6 @@ CLI and TUI for classifying email over IMAP with local AI models (Ollama), gener
      ```sh
      # Kev SystemOne model (requires Ollama >= 0.40.4):
      ollama pull kev:9b-nvfp4
-     ```
-   - Optional topic tag generator:
-     ```sh
-     ollama pull qwen2.5:3b
      ```
 
 3. **Mailbox Credentials**
@@ -84,8 +80,7 @@ Save routing, then start a **new scan**. Saved runs keep their original proposal
 destinations. The Apply preview shows **MOVE TO … (leaves Inbox)**; every folder move
 requires explicit approval, including when class automation is enabled. Classes explicitly
 set to **Leave in Inbox** stay there. Existing class `cleanup = "archive"` or `"trash"` rules take priority;
-folder routing applies to classes with `cleanup = "none"`. Topic tags stay in local
-run history in folder mode, rather than creating copies in multiple folders.
+folder routing applies to classes with `cleanup = "none"`.
 
 Folder moves work through IMAP MOVE, or COPY plus UID EXPUNGE when UIDPLUS is available.
 Gmail over IMAP uses its native label operations to add the destination and remove Inbox.
@@ -94,9 +89,8 @@ IMAP moves require a Message-ID and a saved content fingerprint so retries can v
 the destination. Apply reuses existing folders and creates missing destinations before
 moving emails. Preview and dry-run operations never create folders.
 
-Accounts without an explicit organization setting use automatic class folders.
-Explicit `organization = "labels"` settings still select label mode. You can also
-configure destinations directly:
+All accounts use automatic class folders. Gmail represents these destinations as labels
+through IMAP. You can also configure destinations directly:
 
 ```toml
 [accounts.personal]
@@ -209,22 +203,20 @@ uv run --extra tui inboxed tui
 
 ### Selecting models
 
-Open **Settings** to discover models installed in each local Ollama instance (the catalogue used
-by `ollama list`). The classifier and tag generator each have a searchable model dropdown and a
-**Refresh** button, with parameter count, quantization, and disk size shown when available.
-Each model is inspected through Ollama's `/api/show` metadata endpoint. The classification dropdown
-includes models advertising `decision`; the tag dropdown includes models advertising `completion`.
-Cloud-backed, incompatible, and unverified models are hidden. If your configured model cannot be
-used for its role, its tag is preserved in the manual field with an explanation.
+Open **Settings** to discover models installed in your local Ollama instance (the catalogue
+used by `ollama list`). The classifier has a searchable model dropdown and a **Refresh** button,
+with parameter count, quantization, and disk size shown when available.
+
+Each model is inspected through Ollama's `/api/show` metadata endpoint. Only models advertising
+`decision` for SystemOne classification appear in the dropdown. Cloud models, incompatible models,
+and models with unknown capabilities are hidden. If your configured model cannot be used, its name
+is preserved in the manual field with an explanation.
 
 Install additional models with `ollama pull <tag>`, then refresh. Choose **Enter a model tag
-manually…** for a custom tag or when Ollama is offline. Each model has its own endpoint and timeout.
-Classifier models must support Ollama SystemOne; tag models use Ollama chat with JSON output.
-Metadata inspection does not load a model for inference or test output quality. Missing capability
-metadata and failed inspections remain unverified; refresh after updating Ollama or fixing a model.
-**Save settings** blocks known incompatible choices, including manually entered installed model
-names. Manual tags absent from the installed list, or entered while Ollama is offline, remain
-explicitly unverified. Both model configurations are validated and saved together.
+manually…** for a custom model or when Ollama is offline. The endpoint and request timeout are
+configurable. Metadata inspection does not load a model or check output quality. **Save settings**
+blocks known incompatible choices; manually entered models that could not be inspected remain
+explicitly unverified.
 
 ### Key Bindings
 
@@ -235,7 +227,7 @@ explicitly unverified. Both model configurations are validated and saved togethe
 | `/` | Focus search (filter sender / subject) |
 | `a` | Approve highlighted email (or open bulk review dialog) |
 | `r` | Deny highlighted email (or bulk deny) |
-| `e` | Edit email class and tags |
+| `e` | Edit email class |
 | `n` | Open Scan dialog |
 | `p` | Open Apply dialog |
 | `v` | View email / Close email |
@@ -254,8 +246,8 @@ explicitly unverified. Both model configurations are validated and saved togethe
 ```sh
 # Scan inbox (proposals saved to SQLite; mailbox remains untouched)
 uv run inboxed scan --account personal --limit 50
-uv run inboxed scan --account personal --limit 50 --skip-processed --generate-tags
-uv run inboxed scan --provider-query "older_than:30d"
+uv run inboxed scan --account personal --limit 50 --skip-processed
+uv run inboxed scan --provider-query 'BEFORE 01-Oct-2026'
 
 # Inspect runs
 uv run inboxed runs list
@@ -314,16 +306,6 @@ confidence_threshold = 0.92    # Minimum confidence score (0.0 - 1.0)
 
 Both `allow_automation = true` and `require_approval = false` are required for `apply --auto` execution.
 
-### Topic Tags
-
-```toml
-[tags]
-backend = "ollama"
-endpoint = "http://localhost:11434"
-model = "qwen2.5:3b"
-timeout = 120
-```
-
 ---
 
 ## Project Structure
@@ -333,10 +315,10 @@ The static project website lives in [`docs/`](docs/) and is published at `inboxe
 ```
 src/inboxed/
 ├── domain/        # Entities (EmailMessage, MessageDecision, Action, Approval)
-├── ports/         # Protocols (MailProvider, Classifier, TagGenerator, RunRepository)
+├── ports/         # Protocols (MailProvider, Classifier, RunRepository)
 ├── services/      # Scanning, policy evaluation, review, and execution logic
 ├── providers/     # IMAP implementation
-├── models/        # Ollama (Kev / chat) and Laya adapters
+├── models/        # Ollama classification and model discovery
 ├── storage/       # SQLite run persistence
 ├── cli/           # Typer CLI commands and Rich terminal tables
 └── tui/           # Textual dashboard (screens, widgets, background worker)

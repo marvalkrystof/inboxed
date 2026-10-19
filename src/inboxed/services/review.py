@@ -1,8 +1,7 @@
 from inboxed.config import Settings
 from inboxed.domain.actions import Approval, Execution
-from inboxed.domain.entities import ClassificationResult, Run, TagSuggestion
+from inboxed.domain.entities import ClassificationResult, Run
 from inboxed.domain.errors import InboxedError
-from inboxed.domain.tags import normalize_tags
 from inboxed.ports.run_repository import RunRepository
 from inboxed.services.policy import PolicyService
 
@@ -62,9 +61,7 @@ class ReviewService:
             raise InboxedError("Unknown action")
         refresh_run(run, self.decide_many(run.id, {action_id}, approval))
 
-    def edit(
-        self, run: Run, message_index: int, class_id: str, tag_names: list[str] | None = None
-    ) -> None:
+    def edit(self, run: Run, message_index: int, class_id: str) -> None:
         try:
             original = run.messages[message_index]
         except IndexError as exc:
@@ -83,30 +80,20 @@ class ReviewService:
             settings = Settings.model_validate(latest.config)
             if class_id not in {c.id for c in settings.classes}:
                 raise InboxedError(f"Unknown class: {class_id}")
-            if tag_names is not None:
-                message.tags = [TagSuggestion(t, "manual") for t in normalize_tags(tag_names)]
             message.classification = ClassificationResult(class_id, None, {}, "manual")
             message.manually_classified = True
             message.error = None
             message.actions = PolicyService().propose(
                 message.classification,
                 settings.definitions(),
-                message.tags,
-                folder_routes=(
-                    settings.accounts[latest.account_alias].folder_routes
-                    if settings.accounts[latest.account_alias].organization == "folders"
-                    else None
-                ),
+                folder_routes=settings.accounts[latest.account_alias].folder_routes,
             )
             message.warnings = [
                 warning
                 for warning in message.warnings
                 if warning != "No destination configured for this class; email stays in Inbox"
             ]
-            if (
-                settings.accounts[latest.account_alias].organization == "folders"
-                and not message.actions
-            ):
+            if not message.actions:
                 message.warnings.append(
                     "No destination configured for this class; email stays in Inbox"
                 )

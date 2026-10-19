@@ -29,7 +29,6 @@ class TUIController:
         repository=None,
         provider_session=None,
         classifier_factory=None,
-        tag_factory=None,
         config_path: Path | None = None,
     ):
         self.settings, self.data_dir = settings, data_dir
@@ -37,9 +36,7 @@ class TUIController:
         self.repository = repository or bootstrap.repository(data_dir)
         self.provider_session = provider_session or bootstrap.provider_session
         self.classifier_factory = classifier_factory or bootstrap.build_classifier
-        self.tag_factory = tag_factory or bootstrap.build_tag_generator
         self._classifier = None
-        self._tag_generator = None
         self._body_cache = OrderedDict()
         self._cache_lock = Lock()
         self._active_run = None
@@ -243,15 +240,6 @@ class TUIController:
             )
         if self._classifier is None:
             self._classifier = self.classifier_factory(self.settings)
-        if request.generate_tags and progress:
-            progress(
-                {
-                    "event": "activity",
-                    "message": f"Preparing tag generator: {self.settings.tags.backend}",
-                }
-            )
-        if request.generate_tags and self._tag_generator is None:
-            self._tag_generator = self.tag_factory(self.settings)
         if progress:
             progress({"event": "activity", "message": f"Connecting to inbox: {request.account}"})
         with self._mail_session(self.settings, request.account, progress=progress) as provider:
@@ -259,7 +247,6 @@ class TUIController:
                 provider,
                 self._classifier,
                 self.repository,
-                self._tag_generator if request.generate_tags else None,
             ).scan(
                 self.settings,
                 request.limit,
@@ -313,12 +300,12 @@ class TUIController:
             return
         return ReviewService(self.repository).decide_many(run_id, action_ids, approval)
 
-    def edit(self, run_id, message_id, class_id, tags, account_alias: str | None = None):
+    def edit(self, run_id, message_id, class_id, account_alias: str | None = None):
         if run_id == "__all__" and account_alias:
             for r_info in self.runs(account_alias):
                 r = self.repository.load(r_info["id"])
                 if any(m.ref.message_id == message_id for m in r.messages):
-                    return self.edit(r.id, message_id, class_id, tags)
+                    return self.edit(r.id, message_id, class_id)
             raise InboxedError("Unknown email")
         run = self.repository.load(run_id)
         index = next(
@@ -326,7 +313,7 @@ class TUIController:
         )
         if index is None:
             raise InboxedError("Unknown email")
-        ReviewService(self.repository).edit(run, index, class_id, tags)
+        ReviewService(self.repository).edit(run, index, class_id)
         return run
 
     def preview(self, run_id, auto=False, account_alias: str | None = None):

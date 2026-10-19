@@ -2,14 +2,11 @@ import base64
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 
 from pydantic import ValidationError
 
-from inboxed.config import Settings, TagConfig, load_settings, write_default_config
+from inboxed.config import Settings, load_settings, write_default_config
 from inboxed.domain.errors import ModelError
-from inboxed.domain.tags import normalize_tags
-from inboxed.models.ollama.tag_generator import OllamaTagGenerator
 from tests.helpers import email, settings
 
 
@@ -65,42 +62,6 @@ class AdapterTests(unittest.TestCase):
         )
         message = parse_email(raw, "account", "1", "1", (), "INBOX", "INBOX", None)
         self.assertEqual(message.body, text)
-
-    def test_local_tag_endpoint(self):
-        for endpoint in ["https://ollama.com", "http://localhost.evil.com", "ftp://localhost"]:
-            with self.assertRaises(ValidationError):
-                TagConfig(endpoint=endpoint)
-        with self.assertRaises(ValidationError):
-            TagConfig(model="model:cloud")
-
-    def test_tag_normalization(self):
-        self.assertEqual(normalize_tags([" Cycling ", "cycling", "Travel"]), ["Cycling", "Travel"])
-        for tags in [[""], ["a/b"], ["x" * 41], ["a", "b", "c", "d"]]:
-            with self.assertRaises(ModelError):
-                normalize_tags(tags)
-
-    def test_ollama_schema_and_existing_tag_reuse(self):
-        class Client:
-            def chat(self, **kwargs):
-                self.request = kwargs
-                return SimpleNamespace(
-                    message=SimpleNamespace(content='{"tags": [" cycling ", "CYCLING"]}')
-                )
-
-        client = Client()
-        generator = OllamaTagGenerator("http://localhost:11434", "local", client=client)
-        result = generator.suggest(email(), ["Cycling"])
-        self.assertEqual([t.name for t in result], ["Cycling"])
-        self.assertEqual(client.request["format"]["type"], "object")
-        self.assertFalse(client.request["stream"])
-
-    def test_invalid_ollama_json_raises(self):
-        class Client:
-            def chat(self, **kwargs):
-                return {"message": {"content": '{"tags": ["topic"], "delete": true}'}}
-
-        with self.assertRaises(ModelError):
-            OllamaTagGenerator("", "local", client=Client()).suggest(email(), [])
 
     def test_kev_rejects_unknown_class_nan_and_invalid_probabilities(self):
         from inboxed.models.ollama.kev_classifier import KevClassifier

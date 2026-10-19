@@ -6,8 +6,7 @@ from textual.widgets import Button, Input, Label, Static, Switch
 
 from inboxed.config import (
     ClassifierConfig,
-    TagConfig,
-    save_model_configs,
+    save_classifier_config,
 )
 from inboxed.domain.errors import InboxedError
 from inboxed.tui.widgets.model_picker import OllamaModelPicker
@@ -25,7 +24,6 @@ class SettingsScreen(Static):
 
     def compose(self) -> ComposeResult:
         config = self.controller.settings.classifier
-        tags_config = self.controller.settings.tags
         with Vertical(id="settings-page"):
             with VerticalScroll(id="settings-content"):
                 yield Static("Settings", classes="page-title")
@@ -64,16 +62,6 @@ class SettingsScreen(Static):
                 yield OllamaModelPicker("classifier", config.model, config.endpoint)
                 yield Label("Request timeout in seconds")
                 yield Input(str(config.timeout), type="number", id="classifier-timeout")
-                yield Static("Tag suggestion model", classes="settings-heading")
-                yield Static(
-                    "Optional topic tags use Ollama chat with JSON output. "
-                    "Only models advertising the completion capability appear in the list.",
-                    classes="model-help",
-                    markup=False,
-                )
-                yield OllamaModelPicker("tags", tags_config.model, tags_config.endpoint)
-                yield Label("Tags request timeout in seconds")
-                yield Input(str(tags_config.timeout), type="number", id="tags-timeout")
             yield Static("", id="settings-status", markup=False)
             with Horizontal(classes="page-actions"):
                 yield Button("Save settings", id="settings-save", variant="primary")
@@ -124,9 +112,7 @@ class SettingsScreen(Static):
                 raise InboxedError("Open Inboxed with a config file to save settings")
             current = self.controller.settings.classifier
             classifier_picker = self.query_one("#classifier-model-settings", OllamaModelPicker)
-            tags_picker = self.query_one("#tags-model-settings", OllamaModelPicker)
             classifier_picker.validate_selection()
-            tags_picker.validate_selection()
             options = current.options
             config = ClassifierConfig(
                 backend="kev",
@@ -138,22 +124,12 @@ class SettingsScreen(Static):
                 context_length=current.context_length,
                 options=options,
             )
-            current_tags = self.controller.settings.tags
-            tag_config = TagConfig(
-                backend=current_tags.backend,
-                endpoint=tags_picker.endpoint,
-                model=tags_picker.model,
-                timeout=float(self.query_one("#tags-timeout", Input).value),
-                options=current_tags.options,
-            )
-            save_model_configs(self.config_path, config, tag_config)
+            save_classifier_config(self.config_path, config)
             self.controller.settings.classifier = config
             self.controller._classifier = None
-            self.controller.settings.tags = tag_config
-            self.controller._tag_generator = None
 
             self.query_one("#settings-status", Static).update(
-                f"Saved. Classifier: {config.backend} ({config.model}), Tags: {tag_config.model}."
+                f"Saved. Classifier: {config.backend} ({config.model})."
             )
         except (ValueError, InboxedError) as exc:
             self.query_one("#settings-status", Static).update(f"Could not save: {exc}")

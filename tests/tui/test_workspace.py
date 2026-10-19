@@ -207,7 +207,7 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.app.workspace.state.selected, {"1"})
             await pilot.press("a")
             await pilot.pause()
-            self.app.screen.query_one("#bulk-class_labels", Checkbox).value = True
+            self.app.screen.query_one("#bulk-trash", Checkbox).value = True
             await pilot.click("#save-bulk")
             await pilot.pause()
             self.assertEqual(

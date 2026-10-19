@@ -29,17 +29,10 @@ class FolderRoutingScreen(Dialog):
         with Vertical(classes="dialog", id="folder-dialog"):
             yield Static(f"Folders for {self.alias}", classes="dialog-title", markup=False)
             with VerticalScroll(id="folder-content"):
-                yield Label("How to organize this account")
-                yield Select(
-                    [("Move to folders", "folders"), ("Labels / keyword tags", "labels")],
-                    value=self.account.organization,
-                    allow_blank=False,
-                    id="folder-mode",
-                )
                 yield Static(
                     "Folder moves remove emails from Inbox, including on Gmail. "
                     "By default, each class uses Inboxed - <class name>, created on Apply if missing. "
-                    "You can choose an existing folder or Leave in Inbox instead. Topic tags remain in Inboxed. "
+                    "You can choose an existing folder or Leave in Inbox instead. "
                     "Configured Archive/Trash rules take priority over folder routing. "
                     "Changes apply to new scans; saved proposals keep their destinations.",
                     markup=False,
@@ -127,7 +120,6 @@ class FolderRoutingScreen(Dialog):
                 raise InboxedError("Open Inboxed with a config file to save routing")
             if self.app._jobs:
                 raise InboxedError("Wait for background jobs to finish before changing routing")
-            mode = str(self.query_one("#folder-mode", Select).value)
             routes = {}
             for definition in self.class_definitions:
                 selected = self.query_one(f"#folder-route-{definition.id}", Select).value
@@ -141,7 +133,7 @@ class FolderRoutingScreen(Dialog):
             if account != self.account:
                 raise InboxedError("This account changed; close and reopen its folder settings")
             saved = account.model_dump(exclude_none=True)
-            saved.update(organization=mode, folder_routes=routes)
+            saved.update(organization="folders", folder_routes=routes)
             save_account_config(self.config_path, self.alias, saved)
             self.controller.settings = load_settings(self.config_path)
             self.dismiss(self.alias)

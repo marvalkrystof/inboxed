@@ -27,7 +27,7 @@ class ExecutionService:
         if action.proposal.kind == ActionKind.MOVE:
             return False  # Folder moves always require approval of the saved destination.
         result = message.classification
-        if not auto or action.proposal.generated or message.error or message.uncertain_input:
+        if not auto or message.error or message.uncertain_input:
             return False
         if result is None or result.confidence is None:
             return False

@@ -72,7 +72,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         saved = self.repo.load(self.run.id)
         self.assertEqual(saved.messages[0].actions[0].approval, Approval.APPROVED)
-        self.assertEqual(saved.messages[0].actions[1].approval, Approval.PENDING)
+        self.assertEqual(len(saved.messages[0].actions), 1)
 
     def test_dry_run_and_apply_json(self):
         for action in self.run.messages[0].actions:
@@ -85,7 +85,7 @@ class CLITests(unittest.TestCase):
             self.assertFalse(build.call_args.args[-1])
             result = self.invoke("apply", self.run.id, "--json")
             self.assertEqual(result.exit_code, 0, result.output)
-            self.assertEqual(json.loads(result.output)["succeeded"], 2)
+            self.assertEqual(json.loads(result.output)["succeeded"], 1)
 
     def test_bad_run_and_invalid_limit_exit_nonzero(self):
         self.assertNotEqual(self.invoke("runs", "show", "missing").exit_code, 0)

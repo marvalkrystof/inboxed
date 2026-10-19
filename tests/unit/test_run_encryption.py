@@ -54,7 +54,7 @@ def test_migration_and_encrypted_workflow(history):
         ReviewService(reopened).decide(run, 0, action.proposal.id, Approval.APPROVED)
     assert reopened.get_approved_exemplars()["promotions"][0]["subject"] == "Sale"
     report = ExecutionService(provider, reopened).apply(run)
-    assert report["succeeded"] == 2
+    assert report["succeeded"] == 1
     assert reopened.load(run.id).messages[0].actions[0].execution == "succeeded"
     # Fresh scans also save ciphertext and can use encrypted history as exemplars.
     second = ScanService(FakeProvider(), FakeClassifier(), reopened).scan(settings())

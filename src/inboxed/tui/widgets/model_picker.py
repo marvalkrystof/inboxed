@@ -30,15 +30,13 @@ class OllamaModelPicker(Static):
         self._manual = False
         self._selected_value = CUSTOM
         self._model_value = model
-        self.required_capability = "decision" if prefix == "classifier" else "completion"
-        self.role_label = (
-            "SystemOne classification" if prefix == "classifier" else "chat tag generation"
-        )
+        self.required_capability = "decision"
+        self.role_label = "SystemOne classification"
 
     def compose(self) -> ComposeResult:
         yield Label("Local Ollama endpoint")
         yield Input(self.initial_endpoint, id=f"{self.prefix}-endpoint")
-        yield Label("Compatible installed model (type in the open list to search)")
+        yield Label("Compatible installed model")
         with Horizontal(classes="model-picker-controls"):
             yield Select(
                 [("Enter a model tag manually…", CUSTOM)],
@@ -118,7 +116,7 @@ class OllamaModelPicker(Static):
     def validate_selection(self):
         if self._checking:
             raise ModelError("Wait for model capability checks to finish before saving")
-        # Manual/offline tags remain possible, but cannot bypass a known
+        # Manual/offline model names remain possible, but cannot bypass a known
         # incompatibility, failed inspection or cloud-backed model detection.
         if self._loaded_endpoint == self.endpoint and self.model in self._models:
             reason = self._models[self.model].unavailable_reason(self.required_capability)

@@ -29,7 +29,7 @@ class InstalledModel:
         if self.capabilities is None:
             return "Ollama did not report this model's capabilities. Update Ollama and refresh."
         if capability not in self.capabilities:
-            role = "SystemOne classification" if capability == "decision" else "chat tag generation"
+            role = "SystemOne classification" if capability == "decision" else capability
             return f"This model does not support {role}. Choose a compatible model."
         return None
 

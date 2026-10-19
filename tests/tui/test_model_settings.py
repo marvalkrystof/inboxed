@@ -55,23 +55,22 @@ class ModelSettingsTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.catalog.assert_not_called()
             await self.open_settings(pilot)
-            self.assertEqual(self.catalog.call_count, 2)
+            self.assertEqual(self.catalog.call_count, 1)
+            self.assertEqual(len(self.app.query(OllamaModelPicker)), 1)
             classifier = self.app.query_one("#classifier-model-picker", Select)
             self.assertEqual(classifier.value, "qwen3.5:9b")
             self.assertIn("9B", self.status("classifier"))
             classifier.value = "custom:latest"
-            self.app.query_one("#tags-model-picker", Select).value = "qwen3.5:9b"
             await pilot.pause()
             await pilot.click("#settings-save")
             await pilot.pause()
             saved = load_settings(self.config)
             self.assertEqual(saved.classifier.model, "custom:latest")
-            self.assertEqual(saved.tags.model, "qwen3.5:9b")
             self.assertEqual(self.controller.settings.classifier, saved.classifier)
             await pilot.click("#--content-tab-workspace")
             await pilot.click("#--content-tab-settings")
             await pilot.pause()
-            self.assertEqual(self.catalog.call_count, 2)
+            self.assertEqual(self.catalog.call_count, 1)
 
     async def test_empty_catalog_keeps_current_tag_and_manual_fallback(self):
         self.catalog.return_value = []
@@ -98,22 +97,22 @@ class ModelSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.catalog.side_effect = ModelError("Ollama is offline; enter a model tag manually")
         async with self.app.run_test(size=(100, 32)) as pilot:
             await self.open_settings(pilot)
-            self.assertIn("offline", self.status("tags"))
-            picker = self.app.query_one("#tags-model-picker", Select)
+            self.assertIn("offline", self.status("classifier"))
+            picker = self.app.query_one("#classifier-model-picker", Select)
             picker.value = CUSTOM
             await pilot.pause()
-            self.app.query_one("#tags-model", Input).value = "custom-tags:latest"
+            self.app.query_one("#classifier-model", Input).value = "custom-model:latest"
             self.catalog.side_effect = None
             self.catalog.return_value = self.models
             widget = self.app.query(OllamaModelPicker).last()
             widget.refresh_models()
             await self.app.workers.wait_for_complete()
             await pilot.pause()
-            self.assertEqual(widget.model, "custom-tags:latest")
+            self.assertEqual(widget.model, "custom-model:latest")
             self.assertEqual(picker.value, CUSTOM)
             await pilot.click("#settings-save")
             await pilot.pause()
-            self.assertEqual(load_settings(self.config).tags.model, "custom-tags:latest")
+            self.assertEqual(load_settings(self.config).classifier.model, "custom-model:latest")
 
     async def test_missing_configured_model_is_not_replaced_automatically(self):
         self.catalog.return_value = [
@@ -128,25 +127,27 @@ class ModelSettingsTests(unittest.IsolatedAsyncioTestCase):
                 self.controller.settings.classifier.model,
             )
 
-    async def test_tag_endpoint_can_be_edited_and_invalid_save_changes_nothing(self):
+    async def test_classifier_endpoint_can_be_edited_and_invalid_save_changes_nothing(self):
         async with self.app.run_test(size=(110, 42)) as pilot:
             await self.open_settings(pilot)
             before = self.config.read_bytes()
             old_classifier = self.controller.settings.classifier
             self.app.query_one("#classifier-model-picker", Select).value = "custom:latest"
-            self.app.query_one("#tags-timeout", Input).value = "0"
+            self.app.query_one("#classifier-timeout", Input).value = "0"
             await pilot.pause()
             await pilot.click("#settings-save")
             await pilot.pause()
             self.assertEqual(self.config.read_bytes(), before)
             self.assertEqual(self.controller.settings.classifier, old_classifier)
-            self.app.query_one("#tags-timeout", Input).value = "60"
-            self.app.query_one("#tags-endpoint", Input).value = "http://127.0.0.1:11435"
+            self.app.query_one("#classifier-timeout", Input).value = "60"
+            self.app.query_one("#classifier-endpoint", Input).value = "http://127.0.0.1:11435"
             await pilot.pause(0.8)
             await self.app.workers.wait_for_complete()
             await pilot.click("#settings-save")
             await pilot.pause()
-            self.assertEqual(load_settings(self.config).tags.endpoint, "http://127.0.0.1:11435")
+            self.assertEqual(
+                load_settings(self.config).classifier.endpoint, "http://127.0.0.1:11435"
+            )
             self.assertTrue(
                 any(
                     call.args == ("http://127.0.0.1:11435",) for call in self.catalog.call_args_list
@@ -236,13 +237,9 @@ class ModelSettingsTests(unittest.IsolatedAsyncioTestCase):
         async with self.app.run_test(size=(110, 42)) as pilot:
             await self.open_settings(pilot)
             classifier = self.app.query_one("#classifier-model-picker", Select)
-            tags = self.app.query_one("#tags-model-picker", Select)
             self.assertEqual(
                 {value for _, value in classifier._options},
                 {CUSTOM, "ordinary-alias:local", "both:local"},
-            )
-            self.assertEqual(
-                {value for _, value in tags._options}, {CUSTOM, "chat:local", "both:local"}
             )
 
     async def test_incompatible_current_selection_is_preserved_outside_dropdown_and_save_blocked(
@@ -277,11 +274,11 @@ class ModelSettingsTests(unittest.IsolatedAsyncioTestCase):
         async with self.app.run_test(size=(110, 42)) as pilot:
             await self.open_settings(pilot)
             before = self.config.read_bytes()
-            self.app.query_one("#tags-model-picker", Select).value = CUSTOM
+            self.app.query_one("#classifier-model-picker", Select).value = CUSTOM
             await pilot.pause()
-            self.app.query_one("#tags-model", Input).value = "embed:local"
+            self.app.query_one("#classifier-model", Input).value = "embed:local"
             await pilot.pause()
-            self.assertIn("does not support chat", self.status("tags"))
+            self.assertIn("does not support SystemOne", self.status("classifier"))
             await pilot.click("#settings-save")
             await pilot.pause()
             self.assertEqual(self.config.read_bytes(), before)

@@ -1,9 +1,6 @@
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Input, Label, Select, Static
-
-from inboxed.domain.errors import InboxedError
-from inboxed.domain.tags import normalize_tags
+from textual.widgets import Button, Label, Select, Static
 
 from .dialog import Dialog
 
@@ -16,7 +13,7 @@ class EditScreen(Dialog):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
-            yield Static("Edit primary class and tags", classes="dialog-title")
+            yield Static("Edit primary class", classes="dialog-title")
             yield Static(self.message.subject, markup=False)
             yield Label("Primary class")
             class_options = [(c["id"], c["id"]) for c in self.available_classes]
@@ -33,8 +30,6 @@ class EditScreen(Dialog):
                 allow_blank=False,
                 id="edit-class",
             )
-            yield Label("Up to three tags, comma-separated; blank removes tags")
-            yield Input(", ".join(t.name for t in self.message.tags), id="edit-tags")
             yield Static("Saving regenerates proposals and clears their approvals.", markup=False)
             yield Static("", id="edit-error", markup=False)
             with Horizontal(classes="dialog-buttons"):
@@ -45,9 +40,4 @@ class EditScreen(Dialog):
         if event.button.id == "cancel-edit":
             self.dismiss(None)
         elif event.button.id == "save-edit":
-            try:
-                value = self.query_one("#edit-tags", Input).value
-                tags = normalize_tags([t.strip() for t in value.split(",") if t.strip()])
-                self.dismiss((str(self.query_one("#edit-class", Select).value), tags))
-            except InboxedError as exc:
-                self.query_one("#edit-error", Static).update(str(exc))
+            self.dismiss(str(self.query_one("#edit-class", Select).value))

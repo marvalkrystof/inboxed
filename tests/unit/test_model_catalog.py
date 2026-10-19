@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from inboxed.config import ClassifierConfig, TagConfig, load_settings, save_model_configs
+from inboxed.config import ClassifierConfig, load_settings, save_classifier_config
 from inboxed.domain.errors import InboxedError, ModelError
 from inboxed.models.ollama.catalog import InstalledModel, list_installed_models
 
@@ -120,25 +120,23 @@ def config_path(tmp_path):
     return path
 
 
-def test_both_model_settings_save_together_and_preserve_accounts_classes_options(config_path):
+def test_classifier_settings_preserve_accounts_classes_options(config_path):
     original = load_settings(config_path)
     classifier = ClassifierConfig(
         model="custom-classifier:latest", options={"nested": {"num_ctx": 8192}}
     )
-    tags = TagConfig(model="custom-tags:latest", endpoint="http://127.0.0.1:11435")
-    save_model_configs(config_path, classifier, tags)
+    save_classifier_config(config_path, classifier)
     saved = load_settings(config_path)
     assert saved.classifier == classifier
-    assert saved.tags == tags
     assert saved.accounts == original.accounts
     assert saved.classes == original.classes
 
 
-def test_invalid_tag_settings_cannot_partially_save_classifier(config_path):
+def test_invalid_classifier_settings_cannot_save(config_path):
     before = config_path.read_bytes()
-    tags = TagConfig.model_construct(model="hosted:cloud")
+    classifier = ClassifierConfig.model_construct(model="hosted:cloud")
     with pytest.raises(InboxedError, match="cloud model"):
-        save_model_configs(config_path, ClassifierConfig(model="edited:latest"), tags)
+        save_classifier_config(config_path, classifier)
     assert config_path.read_bytes() == before
 
 
@@ -148,16 +146,15 @@ def test_failed_config_replacement_keeps_original_and_removes_temp(config_path):
         patch.object(Path, "replace", side_effect=OSError("disk failure")),
         pytest.raises(InboxedError, match="disk failure"),
     ):
-        save_model_configs(config_path, ClassifierConfig(), TagConfig())
+        save_classifier_config(config_path, ClassifierConfig())
     assert config_path.read_bytes() == before
     assert list(config_path.parent.glob(".config.toml.*")) == []
 
 
 @pytest.mark.parametrize("model", ["", "   ", "qwen:cloud", "qwen:123b-cloud"])
 def test_model_config_rejects_empty_or_cloud_tags(model):
-    for config in (ClassifierConfig, TagConfig):
-        with pytest.raises(ValueError):
-            config(model=model)
+    with pytest.raises(ValueError):
+        ClassifierConfig(model=model)
 
 
 def test_model_roles_use_reported_capabilities_instead_of_names():

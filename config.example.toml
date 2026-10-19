@@ -14,13 +14,8 @@ endpoint = "http://localhost:11434"
 model = "qwen3.5:9b"
 timeout = 180
 
-[tags]
-backend = "ollama"
-endpoint = "http://localhost:11434"
-model = "qwen2.5:3b"
-timeout = 120
 
-# Label names receive the Inboxed/Class/ prefix automatically.
+# Classes use Inboxed - <label> folders, created automatically on Apply.
 # For automation BOTH allow_automation=true and require_approval=false are needed.
 # Thresholds need evaluation on your own emails before enabling automation.
 [[classes]]

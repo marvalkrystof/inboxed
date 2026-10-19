@@ -7,7 +7,6 @@ from inboxed.domain.entities import Run
 from inboxed.domain.errors import InboxedError
 from inboxed.ports.classifier import Classifier
 from inboxed.ports.mail_provider import MailProvider
-from inboxed.ports.tag_generator import TagGenerator
 from inboxed.providers.imap.config import IMAPConfig
 from inboxed.providers.imap.provider import IMAPProvider
 from inboxed.storage.sqlite import SQLiteRunRepository
@@ -20,7 +19,6 @@ def imap_factory(account, data_dir, write):
 
 PROVIDERS: dict[str, Callable[..., MailProvider]] = {"imap": imap_factory}
 CLASSIFIERS: dict[str, Callable[..., Classifier]] = {}
-TAG_GENERATORS: dict[str, Callable[..., TagGenerator]] = {}
 
 
 def build_classifier(settings: Settings) -> Classifier:
@@ -38,17 +36,6 @@ def build_classifier(settings: Settings) -> Classifier:
             "Please use 'kev' for classification in your configuration."
         )
     raise InboxedError(f"Unknown classifier backend: {settings.classifier.backend}")
-
-
-def build_tag_generator(settings: Settings) -> TagGenerator:
-    from inboxed.models.ollama.tag_generator import OllamaTagGenerator
-
-    factory = TAG_GENERATORS.get(settings.tags.backend)
-    if factory:
-        return factory(settings.tags)
-    if settings.tags.backend != "ollama":
-        raise InboxedError(f"Unknown tag backend: {settings.tags.backend}")
-    return OllamaTagGenerator(settings.tags.endpoint, settings.tags.model, settings.tags.timeout)
 
 
 def build_provider(settings: Settings, alias: str, data_dir: Path, write=False) -> MailProvider:

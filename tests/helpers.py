@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 from inboxed.config import Settings
-from inboxed.domain.entities import ClassificationResult, EmailMessage, MessageRef, TagSuggestion
+from inboxed.domain.entities import ClassificationResult, EmailMessage, MessageRef
 from inboxed.ports.mail_provider import InboxPage, ProviderCapabilities
 
 
@@ -44,7 +44,7 @@ def email(identifier="1", body="A sale on bicycles!", labels=("INBOX",)):
 
 class FakeProvider:
     name = "imap"
-    capabilities = ProviderCapabilities()
+    capabilities = ProviderCapabilities(folders=True, move=True)
 
     def __init__(self, messages=None):
         self.messages = {m.ref.message_id: m for m in (messages or [email()])}
@@ -54,6 +54,8 @@ class FakeProvider:
         self.lost_label_response = False
         self.interrupt_trash = False
         self.account = "test@example.com"
+        self.folders = {"INBOX"}
+        self.lost_move_response = False
 
     def account_identity(self):
         return self.account
@@ -86,6 +88,30 @@ class FakeProvider:
             self.lost_label_response = False
             raise ConnectionError("Response lost after write")
 
+    def list_folders(self):
+        return sorted(self.folders)
+
+    def create_folder(self, name):
+        self.writes.append(("create_folder", name))
+        self.folders.add(name)
+        return name
+
+    def is_in_folder(self, ref, folder):
+        message = self.messages.get(ref.message_id)
+        return message is not None and folder in message.labels
+
+    def move_to_folder(self, ref, folder):
+        self.writes.append(("move", ref.message_id, folder))
+        current = self.messages[ref.message_id]
+        self.messages[ref.message_id] = replace(
+            current,
+            in_inbox=False,
+            labels=tuple(label for label in current.labels if label != "INBOX") + (folder,),
+        )
+        if self.lost_move_response:
+            self.lost_move_response = False
+            raise ConnectionError("Response lost after move")
+
     def archive(self, ref):
         self.writes.append(("archive", ref.message_id))
         current = self.messages[ref.message_id]
@@ -117,8 +143,3 @@ class FakeClassifier:
         return ClassificationResult(
             self.class_id, self.confidence, {self.class_id: self.confidence}, "fake", self.truncated
         )
-
-
-class FakeTags:
-    def suggest(self, message, existing_tags):
-        return [TagSuggestion("Cycling", "fake-tags")]
