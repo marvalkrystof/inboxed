@@ -17,7 +17,7 @@ class ApplyScreen(Dialog):
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog", id="apply-dialog"):
             yield Static("Preview actions", classes="dialog-title")
-            yield Checkbox("Include configured automatic actions", value=False, id="apply-auto")
+            yield Checkbox("Include automatic actions for opted-in classes", value=False, id="apply-auto")
             yield Static("", id="apply-summary", markup=False)
             yield TextArea("", read_only=True, soft_wrap=True, id="apply-actions")
             yield Static("Only the displayed saved proposals will be executed.", markup=False)

@@ -13,6 +13,7 @@ from inboxed.domain.errors import InboxedError
 from .controller import TUIController
 from .messages import JobFinished, JobProgress, JobStarted
 from .screens.accounts import AccountEditScreen, AccountsScreen
+from .screens.classes import ClassesScreen
 from .screens.dialog import QuitScreen
 from .screens.encryption import RunPasswordScreen
 from .screens.runs import RunsScreen
@@ -29,7 +30,8 @@ class InboxedApp(App):
         Binding("1", "switch_tab('workspace')", "Workspace"),
         Binding("2", "switch_tab('runs')", "Runs"),
         Binding("3", "switch_tab('accounts')", "Accounts"),
-        Binding("4", "switch_tab('settings')", "Settings"),
+        Binding("4", "switch_tab('classes')", "Classes"),
+        Binding("5", "switch_tab('settings')", "Settings"),
         Binding("q", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit", show=False, priority=True),
     ]
@@ -45,6 +47,7 @@ class InboxedApp(App):
         self.workspace = WorkspaceScreen(controller)
         self.runs = RunsScreen(controller.repository)
         self.accounts = AccountsScreen(controller, config_path)
+        self.classes_screen = ClassesScreen(controller, config_path)
         self.settings_screen = SettingsScreen(controller, config_path)
 
     def compose(self) -> ComposeResult:
@@ -55,6 +58,8 @@ class InboxedApp(App):
                 yield self.runs
             with TabPane("Accounts", id="accounts"):
                 yield self.accounts
+            with TabPane("Classes", id="classes"):
+                yield self.classes_screen
             with TabPane("Settings", id="settings"):
                 yield self.settings_screen
         yield Footer()
@@ -119,6 +124,9 @@ class InboxedApp(App):
     def show_settings(self):
         self.action_switch_tab("settings")
 
+    def show_classes(self):
+        self.action_switch_tab("classes")
+
     def show_workspace(self, account_alias=None, run_id=None):
         """Switch to Workspace tab, optionally loading a specific account/run."""
         ws = self.workspace
@@ -145,7 +153,8 @@ class InboxedApp(App):
             "label": label or kind,
             "run_id": context.get("run_id") if context else None,
         }
-        self.post_message(JobStarted(job_id, kind, label or kind))
+        run_id = (context or {}).get("run_id")
+        self.post_message(JobStarted(job_id, kind, label or kind, run_id=run_id))
         self._run_job(job_id, kind, operation, context, stop_event)
         return job_id
 
@@ -174,6 +183,7 @@ class InboxedApp(App):
                 f"Stop requested for job #{job_id} ({job['kind']}); "
                 "waiting for current operation to finish",
                 "WARN",
+                run_id=job.get("run_id"),
             )
 
     def stop_event_for(self, job_id: int) -> Event | None:
@@ -192,7 +202,9 @@ class InboxedApp(App):
                 job["stop_event"].set()
                 stopped = True
                 self.workspace.log_activity(
-                    f"Stop requested for run {run_id[:8]} (job #{job_id})", "WARN"
+                    f"Stop requested for run {run_id[:8]} (job #{job_id})",
+                    "WARN",
+                    run_id=run_id,
                 )
         return stopped
 

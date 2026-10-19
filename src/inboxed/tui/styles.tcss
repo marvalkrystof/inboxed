@@ -104,16 +104,15 @@ Button.job-stop-btn, Button.job-stop-btn:hover, Button.job-stop-btn:focus, Butto
 /* ── Activity log ─────────────────────────────────────────────────────────── */
 #log-panel { display: none; height: 10; max-height: 40%; border-top: solid $primary; }
 .log-open #log-panel { display: block; }
-#log-tools { height: 3; padding: 0 1; }
-#log-title { width: 1fr; padding-top: 1; }
-#log-tools Button { min-width: 8; width: auto; margin-left: 1; }
-#activity-log { height: 1fr; padding: 0 1; }
+#log-title { height: 1; padding: 0 1; }
+#activity-log { height: 1fr; padding: 0 1; border: none; }
 
 /* ── Dialogs ──────────────────────────────────────────────────────────────── */
 Dialog { align: center middle; background: $background 70%; }
 .dialog { width: 76; max-width: 95%; height: auto; max-height: 95%; padding: 1 2; border: thick $primary; background: $surface; overflow-y: auto; }
 .dialog-title { text-style: bold; height: auto; margin-bottom: 1; }
 .dialog Label { margin-top: 1; }
+#scan-skip-processed { margin-top: 1; }
 .dialog-buttons { height: 3; margin-top: 1; }
 .dialog-buttons Button { width: 1fr; margin-right: 1; }
 #apply-dialog { height: 80%; }
@@ -125,7 +124,7 @@ Dialog { align: center middle; background: $background 70%; }
 /* ── Runs tab ─────────────────────────────────────────────────────────────── */
 RunsScreen { height: 1fr; layout: vertical; }
 #runs-page { height: 1fr; padding: 1 2; layout: vertical; }
-#runs-table { height: 1fr; margin: 1 0; }
+#runs-table { height: 1fr; margin: 1 0; border: solid $primary; }
 .page-title { text-style: bold; height: 3; }
 .page-actions { height: 3; }
 .page-actions Button { width: auto; min-width: 14; margin-right: 1; }
@@ -141,6 +140,17 @@ AccountsScreen { height: 1fr; layout: vertical; }
 #account-actions Button { width: 1fr; margin-bottom: 1; }
 #account-help { height: auto; padding: 1; color: $text-muted; }
 
+/* ── Classes tab ─────────────────────────────────────────────────────────── */
+ClassesScreen { height: 1fr; layout: vertical; }
+#classes-page { height: 1fr; padding: 1 2; layout: vertical; }
+#classes-list { width: 1fr; height: 1fr; margin: 1 1 1 0; border: solid $primary; }
+#classes-manager { height: 1fr; }
+#classes-actions { width: 26; padding: 1; border: solid $primary; }
+#classes-actions Button { width: 1fr; margin-bottom: 1; }
+#classes-status { height: 2; padding: 0 1; }
+#class-edit-dialog { width: 78; max-width: 95%; }
+#class-edit-dialog Input, #class-edit-dialog Select { width: 1fr; }
+
 /* ── Settings tab ─────────────────────────────────────────────────────────── */
 SettingsScreen { height: 1fr; layout: vertical; }
 #settings-page { height: 1fr; layout: vertical; }
@@ -154,6 +164,7 @@ SettingsScreen { height: 1fr; layout: vertical; }
 /* ── Run logs dialog ──────────────────────────────────────────────────────── */
 #run-logs-dialog { width: 90; max-width: 95%; height: 85%; max-height: 95%; }
 #run-logs-scroll { height: 1fr; margin: 1 0; border: solid $primary; padding: 1; overflow-y: auto; }
+#run-logs-content { height: auto; min-height: 100%; border: none; }
 
 /* Saved run encryption */
 #run-encryption-control { height: 1; margin-bottom: 1; align-vertical: middle; }

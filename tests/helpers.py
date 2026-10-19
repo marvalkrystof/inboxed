@@ -21,7 +21,6 @@ def settings(cleanup="trash", automatic=False):
                     "label": "Promotions",
                     "cleanup": cleanup,
                     "allow_automation": automatic,
-                    "require_approval": not automatic,
                     "confidence_threshold": 0.9,
                 },
                 {"id": "other", "description": "Other email", "label": "Other"},

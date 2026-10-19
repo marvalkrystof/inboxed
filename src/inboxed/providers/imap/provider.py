@@ -391,6 +391,37 @@ class IMAPProvider:
                 raise ProviderError("Message disappeared before removing its Inbox label")
             _, source_uid, _, _ = source
             self._ok(self._uid("STORE", source_uid, "-X-GM-LABELS", r"(\Inbox)"))
+            # Gmail labels are independent of IMAP mailbox membership. Verify
+            # the destination label from that mailbox directly; _locate() can
+            # still find the message in Inbox if Gmail has not yet reflected
+            # the Inbox-label removal in its search results.
+            destination = self._find_destination(folder, data)
+            if not destination:
+                raise ProviderError(
+                    "Gmail applied the destination label, but Inboxed could not verify it "
+                    "after removing the Inbox label; refresh before retrying"
+                )
+            labels = destination[1][1]
+            if any(label.casefold() == r"\inbox".casefold() for label in labels):
+                # Gmail exposes label mailboxes with mailbox-local UIDs. Retry
+                # the system-label removal using the UID returned by the
+                # destination mailbox, where the newly added label is visible.
+                destination_uid = destination[0]
+                self._ok(self._uid("STORE", destination_uid, "-X-GM-LABELS", r"(\Inbox)"))
+                destination = self._find_destination(folder, data)
+                if not destination:
+                    raise ProviderError(
+                        "Gmail applied the destination label, but Inboxed could not verify it "
+                        "after retrying Inbox-label removal; refresh before retrying"
+                    )
+                labels = destination[1][1]
+            if any(label.casefold() == r"\inbox".casefold() for label in labels):
+                raise ProviderError(
+                    "Gmail applied the destination label, but did not remove the Inbox label; "
+                    "the label is still present after retrying from the destination. Refresh "
+                    "before retrying the action"
+                )
+            return
         else:
             self._move(ref, folder)
         current = self.get_message(ref)

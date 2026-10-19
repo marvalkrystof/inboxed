@@ -16,7 +16,7 @@ class AdapterTests(unittest.TestCase):
         config = load_settings(example)
         self.assertIn("payslips", {c.id for c in config.classes})
         self.assertIn("mfa_codes", {c.id for c in config.classes})
-        self.assertTrue(next(c for c in config.classes if c.id == "mfa_codes").require_approval)
+        self.assertFalse(next(c for c in config.classes if c.id == "mfa_codes").allow_automation)
         raw = settings().model_dump()
         raw["classes"].append(raw["classes"][0])
         with self.assertRaises(ValidationError):

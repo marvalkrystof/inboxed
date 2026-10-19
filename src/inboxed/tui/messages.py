@@ -26,9 +26,9 @@ class EmailSelectionToggled(Message):
 
 
 class JobStarted(Message):
-    def __init__(self, job_id: int, kind: str, label: str):
+    def __init__(self, job_id: int, kind: str, label: str, run_id: str | None = None):
         super().__init__()
-        self.job_id, self.kind, self.label = job_id, kind, label
+        self.job_id, self.kind, self.label, self.run_id = job_id, kind, label, run_id
 
 
 class JobProgress(Message):

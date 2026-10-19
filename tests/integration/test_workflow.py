@@ -73,6 +73,20 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.executor().apply(run)["succeeded"], 0)
         self.assertEqual(self.executor().apply(run, auto=True)["succeeded"], 1)
 
+    def test_allow_automation_moves_to_folder_on_explicit_auto_apply(self):
+        run = self.scan(settings(cleanup="none", automatic=True))
+        self.assertEqual(self.executor().apply(run)["succeeded"], 0)
+        result = self.executor().apply(run, auto=True)
+        self.assertEqual(result["succeeded"], 1)
+        self.assertEqual(
+            self.provider.writes,
+            [
+                ("create_folder", "Inboxed - Promotions"),
+                ("move", "1", "Inboxed - Promotions"),
+            ],
+        )
+        self.assertFalse(self.provider.messages["1"].in_inbox)
+
     def test_low_missing_confidence_and_uncertain_content_need_review(self):
         for confidence, truncated, body in [
             (0.5, False, "sale"),
@@ -88,11 +102,15 @@ class WorkflowTests(unittest.TestCase):
                 )
                 self.assertEqual(self.executor().apply(run, auto=True)["succeeded"], 0)
 
-    def test_require_approval_overrides_auto(self):
-        config = settings(automatic=True)
-        config.classes[0].require_approval = True
-        run = self.scan(config)
-        self.assertEqual(self.executor().apply(run, auto=True)["succeeded"], 0)
+    def test_legacy_require_approval_is_ignored_when_loading_config(self):
+        config = settings(automatic=True).model_dump()
+        config["classes"][0]["require_approval"] = True
+        from inboxed.config import Settings
+
+        loaded = Settings.model_validate(config)
+        self.assertNotIn("require_approval", loaded.classes[0].model_dump())
+        run = self.scan(loaded)
+        self.assertEqual(self.executor().apply(run, auto=True)["succeeded"], 1)
 
     def test_rejection_overrides_auto(self):
         run = self.scan(settings(automatic=True))

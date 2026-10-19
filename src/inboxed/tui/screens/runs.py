@@ -4,10 +4,10 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, SelectionList, Static
+from textual.widgets import Button, Static, TextArea
 
 from inboxed.domain.errors import InboxedError
-from inboxed.tui.widgets.selection_list import BracketSelectionList
+from inboxed.tui.widgets.checkable_table import CheckableDataTable
 
 from .dialog import Dialog
 
@@ -88,10 +88,16 @@ class RunLogsScreen(Dialog):
         with Vertical(classes="dialog", id="run-logs-dialog"):
             yield Static(f"Run Logs & Details · {self.run.id[:12]}", classes="dialog-title")
             with VerticalScroll(id="run-logs-scroll"):
-                yield Static(self._build_content())
+                yield TextArea(
+                    self._build_content().plain,
+                    read_only=True,
+                    soft_wrap=True,
+                    id="run-logs-content",
+                )
             with Horizontal(classes="dialog-buttons"):
                 if self.run_is_active or self.run.status in ("scanning", "applying"):
                     yield Button("Cancel this run", id="cancel-this-run", variant="warning")
+                yield Button("View activity logs", id="view-activity-logs")
                 yield Button("Open in Workspace", id="open-workspace-run", variant="primary")
                 yield Button("Close", id="close-run-logs")
 
@@ -188,12 +194,6 @@ class RunLogsScreen(Dialog):
                 )
             t.append("\n")
 
-        if self.session_logs:
-            t.append("Session Activity Logs:\n", style="bold cyan")
-            for log in self.session_logs:
-                t.append(f"  {log}\n", style="dim")
-            t.append("\n")
-
         cfg = self.run.config
         if cfg:
             cls_cfg = cfg.get("classifier", {})
@@ -207,7 +207,9 @@ class RunLogsScreen(Dialog):
         return t
 
     def on_button_pressed(self, event: Button.Pressed):
-        if event.button.id == "close-run-logs":
+        if event.button.id == "view-activity-logs":
+            self.app.push_screen(RunActivityLogsScreen(self.run, self.session_logs))
+        elif event.button.id == "close-run-logs":
             self.dismiss(None)
         elif event.button.id == "open-workspace-run":
             self.dismiss({"action": "open", "run_id": self.run.id})
@@ -220,6 +222,28 @@ class RunLogsScreen(Dialog):
 
     def action_open_workspace(self):
         self.dismiss({"action": "open", "run_id": self.run.id})
+
+
+class RunActivityLogsScreen(Dialog):
+    def __init__(self, run, entries: list[str]):
+        super().__init__()
+        self.run = run
+        self.entries = entries
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog", id="run-activity-logs-dialog"):
+            yield Static(f"Activity Logs · {self.run.id[:12]}", classes="dialog-title")
+            yield TextArea(
+                "\n".join(self.entries) if self.entries else "No activity logs saved for this run.",
+                read_only=True,
+                soft_wrap=True,
+                id="run-activity-logs-content",
+            )
+            with Horizontal(classes="dialog-buttons"):
+                yield Button("Close", id="close-activity-logs")
+
+    def on_button_pressed(self, event: Button.Pressed):
+        self.dismiss(None)
 
 
 class RunsScreen(Static):
@@ -243,10 +267,10 @@ class RunsScreen(Static):
         with Vertical(id="runs-page"):
             yield Static("Saved runs", classes="page-title")
             yield Static(
-                "Click a checkbox or press Space to select runs. 'View logs' shows details and audit logs.",
+                "Click the first column or press Space to select runs. 'View logs' shows details and audit logs.",
                 markup=False,
             )
-            yield BracketSelectionList(id="runs-table")
+            yield CheckableDataTable(id="runs-table")
             with Horizontal(classes="page-actions"):
                 yield Button("Select all", id="select-all-runs")
                 yield Button("Clear selection", id="clear-runs-selection")
@@ -259,49 +283,52 @@ class RunsScreen(Static):
                 yield Button("Refresh", id="refresh-runs")
             yield Static("", id="runs-status", markup=False)
 
-    def on_mount(self):
-        self.refresh_rows()
-
     def on_show(self):
         """Refresh when the tab becomes visible."""
         self.refresh_rows()
-        self.query_one("#runs-table", SelectionList).focus()
+        self.query_one("#runs-table", CheckableDataTable).focus()
+
+    def on_mount(self):
+        table = self.query_one("#runs-table", CheckableDataTable)
+        table.add_checkbox_column()
+        table.add_columns("Created", "Account", "Messages", "Status", "Run ID")
+        self.refresh_rows()
 
     def refresh_rows(self):
         if self.repository.locked:
             return
-        table = self.query_one("#runs-table", SelectionList)
-        selected = set(table.selected)
+        table = self.query_one("#runs-table", CheckableDataTable)
+        selected = set(table.checked_values)
         highlighted = self.selected_id()
         try:
             self.rows = self.repository.list_runs()
         except InboxedError as exc:
             self.query_one("#runs-status", Static).update(str(exc))
             return
-        with self.prevent(SelectionList.SelectedChanged):
-            table.clear_options()
-            table.add_options(
-                [
-                    (
-                        format_run_option(row),
-                        row["id"],
-                        row["id"] in selected,
-                    )
-                    for row in self.rows
-                ]
+        selected.intersection_update(row["id"] for row in self.rows)
+        table.clear_checkable_rows()
+        table.checked_values = selected
+        for row in self.rows:
+            table.add_checkable_row(
+                row["id"],
+                row["id"] in selected,
+                row["created_at"][:19].replace("T", " "),
+                row.get("account_alias", row["account"]),
+                str(row["messages"]),
+                row.get("status", "ready").replace("_", " "),
+                row["id"][:12],
             )
-            if self.rows:
-                table.highlighted = next(
-                    (i for i, row in enumerate(self.rows) if row["id"] == highlighted), 0
-                )
+        if self.rows:
+            table.move_cursor(
+                row=next((i for i, row in enumerate(self.rows) if row["id"] == highlighted), 0)
+            )
         self.update_selection()
 
-    def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged):
-        if event.selection_list.id == "runs-table":
-            self.update_selection()
+    def on_checkable_data_table_checked_changed(self, event: CheckableDataTable.CheckedChanged):
+        self.update_selection()
 
     def get_target_run_ids(self) -> list[str]:
-        selected = list(self.query_one("#runs-table", SelectionList).selected)
+        selected = list(self.query_one("#runs-table", CheckableDataTable).checked_values)
         if selected:
             return selected
         highlighted = self.selected_id()
@@ -310,7 +337,7 @@ class RunsScreen(Static):
         return []
 
     def update_selection(self):
-        count = len(self.query_one("#runs-table", SelectionList).selected)
+        count = len(self.query_one("#runs-table", CheckableDataTable).checked_values)
         delete_btn = self.query_one("#delete-run", Button)
         delete_btn.label = f"Delete selected ({count})" if count else "Delete highlighted"
         delete_btn.disabled = not self.rows
@@ -328,18 +355,15 @@ class RunsScreen(Static):
         )
 
     def selected_id(self):
-        table = self.query_one("#runs-table", SelectionList)
-        if table.highlighted is not None and 0 <= table.highlighted < len(self.rows):
-            return table.get_option_at_index(table.highlighted).value
-        return None
+        return self.query_one("#runs-table", CheckableDataTable).key_at_cursor()
 
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "refresh-runs":
             self.refresh_rows()
         elif event.button.id == "select-all-runs":
-            self.query_one("#runs-table", SelectionList).select_all()
+            self.query_one("#runs-table", CheckableDataTable).select_all()
         elif event.button.id == "clear-runs-selection":
-            self.query_one("#runs-table", SelectionList).deselect_all()
+            self.query_one("#runs-table", CheckableDataTable).deselect_all()
         elif event.button.id == "open-run":
             self.action_open_run()
         elif event.button.id == "open-all-runs":
@@ -352,7 +376,7 @@ class RunsScreen(Static):
             self.action_delete_run()
 
     def action_open_run(self):
-        selected_ids = list(self.query_one("#runs-table", SelectionList).selected)
+        selected_ids = list(self.query_one("#runs-table", CheckableDataTable).checked_values)
         if len(selected_ids) > 1:
             self.action_open_all_runs()
             return
@@ -393,11 +417,11 @@ class RunsScreen(Static):
             self.app.notify(f"Could not load run: {exc}", severity="error")
             return
 
-        session_logs = [
-            str(entry)
-            for entry in getattr(self.app.workspace, "log_entries", [])
-            if run_id[:8] in str(entry) or run_id in str(entry)
-        ]
+        try:
+            session_logs = self.repository.list_logs(run_id)
+        except InboxedError as exc:
+            self.app.notify(f"Could not load run logs: {exc}", severity="error")
+            return
         is_active = self.app.is_run_active(run_id)
         self.app.push_screen(
             RunLogsScreen(run, session_logs, is_active=is_active),
@@ -439,9 +463,7 @@ class RunsScreen(Static):
                     try:
                         run = self.repository.load(rid)
                         run.status = (
-                            "scan_cancelled"
-                            if row["status"] == "scanning"
-                            else "apply_cancelled"
+                            "scan_cancelled" if row["status"] == "scanning" else "apply_cancelled"
                         )
                         self.repository.save(run)
                         cancelled_count += 1
@@ -455,7 +477,7 @@ class RunsScreen(Static):
             self.refresh_rows()
 
     def action_delete_run(self):
-        run_ids = set(self.query_one("#runs-table", SelectionList).selected)
+        run_ids = set(self.query_one("#runs-table", CheckableDataTable).checked_values)
         if not run_ids and self.selected_id():
             run_ids.add(self.selected_id())
         if not run_ids:

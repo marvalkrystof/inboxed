@@ -24,19 +24,13 @@ class ExecutionService:
             return False
         if action.approval == Approval.APPROVED:
             return True
-        if action.proposal.kind == ActionKind.MOVE:
-            return False  # Folder moves always require approval of the saved destination.
         result = message.classification
         if not auto or message.error or message.uncertain_input:
             return False
         if result is None or result.confidence is None:
             return False
         definition = next(c for c in settings.classes if c.id == result.class_id)
-        return (
-            definition.allow_automation
-            and not definition.require_approval
-            and result.confidence >= definition.confidence_threshold
-        )
+        return definition.allow_automation and result.confidence >= definition.confidence_threshold
 
     @classmethod
     def preview(cls, run: Run, auto: bool = False) -> dict:
@@ -149,7 +143,7 @@ class ExecutionService:
                     for m, a in candidates
                 ],
             }
-        report = {"run_id": run.id, "succeeded": 0, "failed": 0, "skipped": 0}
+        report = {"run_id": run.id, "succeeded": 0, "failed": 0, "skipped": 0, "errors": []}
         if progress:
             progress({"event": "activity", "message": "Reading mailbox labels for Apply"})
         label_map = (
@@ -275,6 +269,13 @@ class ExecutionService:
                         state.execution = Execution.FAILED
                         state.error = str(exc)
                         report["failed"] += 1
+                        report["errors"].append(
+                            {
+                                "action": p.kind.value,
+                                "message_id": message.ref.message_id,
+                                "error": str(exc),
+                            }
+                        )
                         if p.kind == ActionKind.LABEL:
                             blocked = True
                     finally:

@@ -63,6 +63,15 @@ Configure your server and username in `config.toml`, then set the password envir
 variable or enter an app password in the account form. Passwords entered directly are
 stored in the configuration; prefer an environment variable.
 
+Print the active settings as grouped terminal tables, with credential values redacted. Add
+`--json` for script friendly output:
+
+```sh
+uv run inboxed settings
+# or
+uv run inboxed settings --json
+```
+
 ### Folder routing
 
 Folder routing is the default; no folder setup or creation button is needed. Each class
@@ -77,10 +86,10 @@ are also created on Apply. If the server refuses creation, create the folder in 
 and retry Apply.
 
 Save routing, then start a **new scan**. Saved runs keep their original proposals and
-destinations. The Apply preview shows **MOVE TO … (leaves Inbox)**; every folder move
-requires explicit approval, including when class automation is enabled. Classes explicitly
-set to **Leave in Inbox** stay there. Existing class `cleanup = "archive"` or `"trash"` rules take priority;
-folder routing applies to classes with `cleanup = "none"`.
+destinations. The Apply preview shows **MOVE TO … (leaves Inbox)**. Folder moves need approval
+by default; in the TUI, opt the class into automation in **Classes**, then select **Include automatic actions for opted-in classes** in the Apply preview. Eligible moves proceed when confidence meets the configured threshold and the message is not uncertain. The CLI equivalent is `inboxed apply --auto`.
+Classes explicitly set to **Leave in Inbox** stay there. Existing class `cleanup = "archive"` or
+`"trash"` rules take priority; folder routing applies to classes with `cleanup = "none"`.
 
 Folder moves work through IMAP MOVE, or COPY plus UID EXPUNGE when UIDPLUS is available.
 Gmail over IMAP uses its native label operations to add the destination and remove Inbox.
@@ -152,7 +161,7 @@ the account. Use **Accounts → Edit selected → Save changes** to refresh acce
 
 In **Settings → Encrypt saved runs**, choose and confirm a password of at least 12 characters.
 This setting applies to all accounts in the selected data directory. It is off by default.
-Enabling it encrypts existing run contents and all future runs. Inboxed prompts once per TUI
+Enabling it encrypts existing run contents, saved activity logs, and all future runs. Inboxed prompts once per TUI
 session; CLI commands that access history prompt once per command. The password and derived key
 are not saved to disk. Finish active scans or mailbox operations before changing encryption.
 
@@ -168,7 +177,7 @@ uv run inboxed runs decrypt
 **A forgotten password cannot be recovered.** Keep it in a password manager. Losing access to
 saved runs does not affect mail stored with your provider.
 
-Run contents use authenticated Fernet encryption with a key derived from the password using
+Run contents and saved activity log text use authenticated Fernet encryption with a key derived from the password using
 Argon2id (64 MiB, three passes). Email previews, senders, subjects, account details, decisions,
 and configuration snapshots are encrypted. Run IDs, creation times, and encryption metadata
 remain readable. The separate configuration file and environment credentials are outside this
@@ -196,10 +205,11 @@ uv run --extra tui inboxed tui
   - Filters for search, class, status, and confidence threshold.
   - Email table with multi-select checkboxes.
   - Detail pane with on-demand full text (loads only when scrolling down or clicking the excerpt banner).
-  - Background jobs monitor and live activity log.
-- **Runs (`2`)**: View historical runs and batch-delete local history.
+  - Background jobs monitor and live activity log. Scan and apply activity is saved with its run.
+- **Runs (`2`)**: View historical runs and their saved activity logs, and batch-delete local history. Deleting a run also deletes its logs.
 - **Accounts (`3`)**: Add or edit IMAP accounts with connection verification included. Removing an account also deletes all its saved runs.
-- **Settings (`4`)**: Choose installed Ollama models, edit local endpoints, and manage password encryption for saved runs.
+- **Classes (`4`)**: Enable automation with checkboxes, add or edit classes, and remove classes and their folder routes.
+- **Settings (`5`)**: Choose installed Ollama models, edit local endpoints, and manage password encryption for saved runs.
 
 ### Selecting models
 
@@ -222,7 +232,7 @@ explicitly unverified.
 
 | Key | Action |
 | :--- | :--- |
-| `1`–`4` | Switch tab (Workspace, Runs, Accounts, Settings) |
+| `1`–`5` | Switch tab (Workspace, Runs, Accounts, Classes, Settings) |
 | `Space` | Toggle email selection |
 | `/` | Focus search (filter sender / subject) |
 | `a` | Approve highlighted email (or open bulk review dialog) |
@@ -260,6 +270,12 @@ uv run inboxed review <RUN_ID> --all
 # Apply approved actions
 uv run inboxed apply <RUN_ID> --dry-run
 uv run inboxed apply <RUN_ID>
+
+# Manage classes
+uv run inboxed classes list
+uv run inboxed classes add newsletters --label Newsletters --description "Recurring newsletters and digests"
+uv run inboxed classes edit newsletters --allow-automation --confidence-threshold 0.95
+uv run inboxed classes delete newsletters
 
 # Apply with automated actions meeting threshold
 uv run inboxed apply <RUN_ID> --auto
@@ -299,12 +315,11 @@ id = "promotions"
 description = "Advertisements, sales offers, coupons and marketing campaigns"
 label = "Promotions"
 cleanup = "archive"            # "none", "archive", or "trash"
-allow_automation = true         # Eligible for apply --auto
-require_approval = false        # Bypasses manual review if threshold met
-confidence_threshold = 0.92    # Minimum confidence score (0.0 - 1.0)
+allow_automation = true      # Opt eligible moves and cleanup actions into automation
+confidence_threshold = 0.92 # Minimum confidence score (0.0 - 1.0)
 ```
 
-Both `allow_automation = true` and `require_approval = false` are required for `apply --auto` execution.
+Manage classes and automation eligibility in the TUI's **Classes** tab or with `inboxed classes`. In the Apply preview, enable **Include automatic actions for opted-in classes**. The equivalent CLI option is `inboxed apply --auto`. Automation skips messages with uncertain content, missing confidence, or confidence below the threshold. Leave `allow_automation = false` for classes that must be reviewed manually. Deleting a class also removes its account-specific folder routes; saved runs retain their stored class data.
 
 ---
 

@@ -44,6 +44,30 @@ class CLITests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(json.loads(result.output)[0]["id"], self.run.id)
 
+    def test_settings_prints_config_and_redacts_credentials(self):
+        configured = settings()
+        configured.accounts["personal"].options["password"] = "do-not-print"
+        configured.accounts["personal"].options["password_env"] = "INBOXED_IMAP_PASSWORD"
+        with patch("inboxed.cli.app.load_settings", return_value=configured):
+            result = self.invoke("settings", "--json")
+        self.assertEqual(result.exit_code, 0, result.output)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["accounts"]["personal"]["options"]["password"], "<redacted>")
+        self.assertEqual(
+            payload["accounts"]["personal"]["options"]["password_env"],
+            "INBOXED_IMAP_PASSWORD",
+        )
+        self.assertIn("allow_automation", payload["classes"][0])
+
+    def test_settings_default_output_is_grouped_for_terminal_reading(self):
+        with patch("inboxed.cli.app.load_settings", return_value=settings()):
+            result = self.invoke("settings")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Classifier", result.output)
+        self.assertIn("Accounts", result.output)
+        self.assertIn("Classes", result.output)
+        self.assertIn("promotions", result.output)
+
     def test_scan_json(self):
         with (
             patch("inboxed.cli.app.load_settings", return_value=settings()),

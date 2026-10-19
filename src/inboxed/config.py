@@ -73,7 +73,13 @@ class ClassConfig(StrictModel):
     cleanup: Literal["none", "archive", "trash"] = "none"
     allow_automation: bool = False
     confidence_threshold: float = Field(default=0.9, ge=0, le=1)
-    require_approval: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_legacy_approval_setting(cls, data):
+        if isinstance(data, dict) and "require_approval" in data:
+            data = {key: value for key, value in data.items() if key != "require_approval"}
+        return data
 
     def definition(self) -> ClassDefinition:
         return ClassDefinition(**self.model_dump())
@@ -135,14 +141,28 @@ def _toml_value(value):
     raise ValueError(f"Unsupported model option type: {type(value).__name__}")
 
 
-def _save_model_sections(path: Path, updates: dict[str, dict]) -> None:
-    """Validate all changed model sections, then replace the config once."""
+def _save_model_sections(
+    path: Path, updates: dict[str, dict], class_automation: dict[str, bool] | None = None
+) -> None:
+    """Validate changed model and automation settings, then replace config once."""
     path = path.expanduser().resolve()
     temporary = None
     try:
         source = path.read_text()
         parsed = tomllib.loads(source)
-        Settings.model_validate({**parsed, **updates})
+        classes = [dict(item) for item in parsed.get("classes", [])]
+        if class_automation is not None:
+            known = {item.get("id") for item in classes}
+            unknown = set(class_automation) - known
+            if unknown:
+                raise ValueError(f"Unknown class: {min(unknown)}")
+            for item in classes:
+                if item.get("id") in class_automation:
+                    item["allow_automation"] = bool(class_automation[item["id"]])
+            source = _set_class_automation_lines(
+                source, class_automation, [item.get("id") for item in classes]
+            )
+        Settings.model_validate({**parsed, **updates, "classes": classes})
         headers = re.compile(r"^\[{1,2}([^\]]+)\]{1,2}\s*(?:#.*)?$")
         retained = []
         skip = False
@@ -187,8 +207,113 @@ def _save_model_sections(path: Path, updates: dict[str, dict]) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def save_classifier_config(path: Path, classifier: ClassifierConfig) -> None:
-    _save_model_sections(path, {"classifier": classifier.model_dump()})
+def _set_class_automation_lines(
+    source: str, automation: dict[str, bool], class_ids: list[str]
+) -> str:
+    headers = re.compile(r"^\[\[classes\]\]\s*(?:#.*)?$")
+    any_header = re.compile(r"^\[{1,2}[^\]]+\]{1,2}\s*(?:#.*)?$")
+    setting = re.compile(r"^\s*allow_automation\s*=")
+    class_index = -1
+    class_id = None
+    seen = set()
+    updated = []
+    for line in source.splitlines(keepends=True):
+        raw = line.rstrip("\r\n")
+        if any_header.match(raw):
+            if class_id in automation and class_id not in seen:
+                updated.append(f"allow_automation = {str(bool(automation[class_id])).lower()}\n")
+                seen.add(class_id)
+            class_id = None
+            if headers.match(raw):
+                class_index += 1
+                class_id = class_ids[class_index] if class_index < len(class_ids) else None
+            updated.append(line)
+            continue
+        if class_id in automation and setting.match(line):
+            updated.append(f"allow_automation = {str(bool(automation[class_id])).lower()}\n")
+            seen.add(class_id)
+            continue
+        updated.append(line)
+    if class_id in automation and class_id not in seen:
+        updated.append(f"allow_automation = {str(bool(automation[class_id])).lower()}\n")
+    return "".join(updated)
+
+
+def save_classifier_config(
+    path: Path,
+    classifier: ClassifierConfig,
+    class_automation: dict[str, bool] | None = None,
+) -> None:
+    _save_model_sections(path, {"classifier": classifier.model_dump()}, class_automation)
+
+
+def save_classes_config(path: Path, classes: list[ClassConfig]) -> None:
+    """Replace the configured classes while preserving other TOML sections."""
+    path = path.expanduser().resolve()
+    temporary = None
+    try:
+        source = path.read_text()
+        parsed = tomllib.loads(source)
+        class_data = [item.model_dump() for item in classes]
+        accounts = {alias: dict(config) for alias, config in parsed.get("accounts", {}).items()}
+        class_ids = {item["id"] for item in class_data}
+        for account in accounts.values():
+            account["folder_routes"] = {
+                key: value
+                for key, value in account.get("folder_routes", {}).items()
+                if key in class_ids
+            }
+        candidate = {**parsed, "classes": class_data, "accounts": accounts}
+        Settings.model_validate(candidate)
+
+        lines = source.splitlines(keepends=True)
+        header = re.compile(r"^\[\[classes\]\]\s*(?:#.*)?$")
+        any_header = re.compile(r"^\[{1,2}[^\]]+\]{1,2}\s*(?:#.*)?$")
+        indexes = [i for i, line in enumerate(lines) if header.match(line.rstrip("\r\n"))]
+        if not indexes:
+            raise ValueError("Configuration has no [[classes]] section")
+        start = indexes[0]
+        end = len(lines)
+        for i in range(start + 1, len(lines)):
+            raw = lines[i].rstrip("\r\n")
+            if any_header.match(raw) and not header.match(raw):
+                end = i
+                break
+        rendered = []
+        for item in class_data:
+            rendered.append("[[classes]]\n")
+            for key, value in item.items():
+                rendered.append(f"{key} = {_toml_value(value)}\n")
+            rendered.append("\n")
+        replaced = lines[:start] + rendered + lines[end:]
+        updated = "".join(replaced)
+        for alias, account in accounts.items():
+            section = re.compile(rf"^\[accounts\.{re.escape(alias)}\]\s*(?:#.*)?$")
+            in_section = False
+            rewritten = []
+            for line in updated.splitlines(keepends=True):
+                raw = line.rstrip("\r\n")
+                if re.match(r"^\[{1,2}[^\]]+\]{1,2}", raw):
+                    in_section = bool(section.match(raw))
+                if in_section and re.match(r"^\s*folder_routes\s*=", line):
+                    rewritten.append(f"folder_routes = {_toml_value(account['folder_routes'])}\n")
+                else:
+                    rewritten.append(line)
+            updated = "".join(rewritten)
+        Settings.model_validate(tomllib.loads(updated))
+        fd, filename = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        temporary = Path(filename)
+        with os.fdopen(fd, "w") as handle:
+            handle.write(updated)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.chmod(path.stat().st_mode & 0o777)
+        temporary.replace(path)
+    except (OSError, ValueError) as exc:
+        raise InboxedError(f"Cannot update classes: {exc}") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 class Settings(StrictModel):

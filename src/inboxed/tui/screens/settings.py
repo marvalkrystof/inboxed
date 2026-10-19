@@ -127,9 +127,8 @@ class SettingsScreen(Static):
             save_classifier_config(self.config_path, config)
             self.controller.settings.classifier = config
             self.controller._classifier = None
-
             self.query_one("#settings-status", Static).update(
-                f"Saved. Classifier: {config.backend} ({config.model})."
+                "Saved classifier settings. Manage classes and automation in the Classes tab."
             )
         except (ValueError, InboxedError) as exc:
             self.query_one("#settings-status", Static).update(f"Could not save: {exc}")

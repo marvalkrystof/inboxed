@@ -63,7 +63,6 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             await self._switch_tab(pilot, "workspace")
             self.assertEqual(tabs.active, "workspace")
 
-
     async def test_run_delete_confirmation_removes_history_without_mailbox_writes(self):
         async with self.app.run_test(size=(110, 34)) as pilot:
             await pilot.pause()
@@ -77,29 +76,29 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.provider.writes, [])
 
     async def test_checkbox_selection_cancel_refresh_and_bulk_delete(self):
-        from textual.widgets import SelectionList
+        from inboxed.tui.widgets.checkable_table import CheckableDataTable
 
         self.controller.scan(ScanRequest("personal"))
         self.controller.scan(ScanRequest("personal"))
         async with self.app.run_test(size=(160, 34)) as pilot:
             await self._switch_tab(pilot, "runs")
             await pilot.pause()
-            table = self.app.query_one("#runs-table", SelectionList)
+            table = self.app.query_one("#runs-table", CheckableDataTable)
             table.focus()
             await pilot.pause()
             await pilot.press("space", "down", "space")
-            selected = set(table.selected)
+            selected = set(table.checked_values)
             self.assertEqual(len(selected), 2)
             await pilot.click("#refresh-runs")
             await pilot.pause()
-            self.assertEqual(set(table.selected), selected)
+            self.assertEqual(set(table.checked_values), selected)
             await pilot.click("#delete-run")
             await pilot.pause()
             self.assertEqual({row["id"] for row in self.app.screen.rows}, selected)
             await pilot.click("#cancel-delete-run")
             await pilot.pause()
             self.assertEqual(len(self.repository.list_runs()), 3)
-            self.assertEqual(set(table.selected), selected)
+            self.assertEqual(set(table.checked_values), selected)
             await pilot.click("#delete-run")
             await pilot.pause()
             await pilot.click("#confirm-delete-run")
@@ -107,14 +106,14 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             remaining = {row["id"] for row in self.repository.list_runs()}
             self.assertEqual(len(remaining), 1)
             self.assertFalse(remaining & selected)
-            self.assertEqual(table.selected, [])
+            self.assertEqual(table.checked_values, set())
             self.assertEqual(self.provider.writes, [])
             await pilot.click("#select-all-runs")
             await pilot.pause()
-            self.assertEqual(set(table.selected), remaining)
+            self.assertEqual(set(table.checked_values), remaining)
             await pilot.click("#clear-runs-selection")
             await pilot.pause()
-            self.assertEqual(table.selected, [])
+            self.assertEqual(table.checked_values, set())
 
     def test_bulk_delete_is_atomic_when_a_run_is_busy_or_missing(self):
         other = self.controller.scan(ScanRequest("personal"))
@@ -224,6 +223,7 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
 
             # Test RunLogsScreen with skipping used and emails skipped
             from inboxed.domain.entities import Run
+
             run_with_skips = Run("imap", "me@example.com", {}, skip_processed=True, skipped_count=5)
             logs_with_skips = RunLogsScreen(run_with_skips)
             self.assertIn("Skip emails:  Yes (5 skipped)", logs_with_skips._build_content().plain)
@@ -246,8 +246,10 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reloaded.status, "scan_cancelled")
 
     async def test_runs_page_open_in_workspace(self):
-        from textual.widgets import TabbedContent, SelectionList
+        from textual.widgets import TabbedContent
+
         from inboxed.tui.screens.runs import RunLogsScreen
+        from inboxed.tui.widgets.checkable_table import CheckableDataTable
 
         other_run = self.controller.scan(ScanRequest("personal"))
         async with self.app.run_test(size=(110, 40)) as pilot:
@@ -256,9 +258,11 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             self.app.runs.refresh_rows()
 
             # Select other_run in table and click open-run
-            table = self.app.query_one("#runs-table", SelectionList)
-            work_idx = next(i for i, row in enumerate(self.app.runs.rows) if row["id"] == other_run.id)
-            table.highlighted = work_idx
+            table = self.app.query_one("#runs-table", CheckableDataTable)
+            work_idx = next(
+                i for i, row in enumerate(self.app.runs.rows) if row["id"] == other_run.id
+            )
+            table.move_cursor(row=work_idx)
             await pilot.pause()
 
             await pilot.click("#open-run")
@@ -289,6 +293,7 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_all_runs_altogether_in_workspace_and_runs_tab(self):
         from textual.widgets import TabbedContent
+
         from inboxed.domain.actions import Approval
         from inboxed.domain.entities import EmailMessage, MessageRef
 
@@ -325,7 +330,9 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("unique_new_msg", all_ids)
 
             # Test approving an action in __all__ view
-            target_msg = next(m for m in ws.state.run.messages if m.ref.message_id == "unique_new_msg")
+            target_msg = next(
+                m for m in ws.state.run.messages if m.ref.message_id == "unique_new_msg"
+            )
             act = target_msg.actions[0]
             ws.save_decisions("__all__", {act.proposal.id}, Approval.APPROVED)
             await pilot.pause()
@@ -333,7 +340,10 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             # Check that underlying run was updated
             reloaded_second = self.repository.load(second_run.id)
             reloaded_act = next(
-                a for m in reloaded_second.messages for a in m.actions if a.proposal.id == act.proposal.id
+                a
+                for m in reloaded_second.messages
+                for a in m.actions
+                if a.proposal.id == act.proposal.id
             )
             self.assertEqual(reloaded_act.approval, Approval.APPROVED)
 
@@ -345,4 +355,3 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             tabs = self.app.query_one("#main-tabs", TabbedContent)
             self.assertEqual(tabs.active, "workspace")
             self.assertEqual(self.app.workspace.state.run.id, "__all__")
-

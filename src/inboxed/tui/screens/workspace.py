@@ -7,14 +7,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual.widgets import (
-    Button,
-    Input,
-    RichLog,
-    Select,
-    Static,
-    TextArea,
-)
+from textual.widgets import Button, Input, Select, Static, TextArea
 
 from inboxed.domain.actions import Approval
 from inboxed.domain.errors import InboxedError
@@ -79,6 +72,7 @@ class WorkspaceScreen(Static):
         self._active_jobs: dict[int, dict] = {}
         self._narrow_detail = False
         self.log_entries = deque(maxlen=1000)
+        self._job_run_ids: dict[int, str] = {}
         self._checking_accounts: set[str] = set()
 
     @property
@@ -138,7 +132,7 @@ class WorkspaceScreen(Static):
                     yield Button("Deny", id="reject-selection", variant="error")
                     yield Button("Edit", id="edit-selection")
                     yield Button("View email", id="open-detail")
-                    yield Button("Show log", id="toggle-log")
+                    yield Button("Activity log", id="toggle-log")
                     yield Static("", id="selection-summary", markup=False)
                 with Horizontal(id="email-panes"):
                     yield EmailTable(id="email-table")
@@ -148,11 +142,8 @@ class WorkspaceScreen(Static):
             yield Static("Active jobs", id="jobs-panel-title")
             yield ScrollableContainer(id="jobs-list")
         with Vertical(id="log-panel"):
-            with Horizontal(id="log-tools"):
-                yield Static("Activity log · this session", id="log-title")
-                yield Button("Clear", id="clear-log")
-                yield Button("Hide", id="hide-log")
-            yield RichLog(id="activity-log", max_lines=1000, min_width=1, wrap=True)
+            yield Static("Activity log · this session", id="log-title")
+            yield TextArea("", read_only=True, soft_wrap=True, id="activity-log")
 
     def on_mount(self):
         self.log_activity(
@@ -409,8 +400,6 @@ class WorkspaceScreen(Static):
             "full-text": self.action_full_text,
             "toggle-detail": self.action_toggle_detail,
             "toggle-log": self.action_toggle_log,
-            "hide-log": self.action_toggle_log,
-            "clear-log": self.clear_log,
         }
         if event.button.id in handlers:
             handlers[event.button.id]()
@@ -426,35 +415,32 @@ class WorkspaceScreen(Static):
             job_id = int(event.button.id.removeprefix("stop-job-"))
             self.app.request_stop(job_id)
 
-    def log_activity(self, message, level="INFO"):
-        # Keep a bounded buffer even before the hidden RichLog has a render size.
+    def log_activity(self, message, level="INFO", run_id=None):
+        # Keep a bounded in-session buffer for the L panel.
         message = " ".join(str(message).splitlines())[:2000]
-        line = f"{datetime.now().strftime('%H:%M:%S')}  {level}  {message}"
+        line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  {level}  {message}"
         self.log_entries.append(line)
+        if run_id:
+            try:
+                self.controller.repository.append_log(run_id, line)
+            except InboxedError as exc:
+                self.app.notify(f"Could not save run log: {exc}", severity="error")
         if self.has_class("log-open"):
-            self.query_one("#activity-log", RichLog).write(line, width=max(1, self.size.width - 2))
+            self.query_one("#activity-log", TextArea).load_text("\n".join(self.log_entries))
 
     def render_log(self):
-        log = self.query_one("#activity-log", RichLog)
-        log.clear()
-        for line in self.log_entries:
-            log.write(line, width=max(1, self.size.width - 2))
-
-    def clear_log(self):
-        self.log_entries.clear()
-        self.query_one("#activity-log", RichLog).clear()
+        self.query_one("#activity-log", TextArea).load_text("\n".join(self.log_entries))
 
     def action_toggle_log(self):
         visible = not self.has_class("log-open")
         self.set_class(visible, "log-open")
-        self.query_one("#toggle-log", Button).label = "Hide log" if visible else "Show log"
         if visible:
             self.call_after_refresh(self.render_log)
         else:
             self.query_one("#email-table", EmailTable).focus()
 
-    def error(self, exc):
-        self.log_activity(exc, "ERROR")
+    def error(self, exc, run_id=None):
+        self.log_activity(exc, "ERROR", run_id=run_id)
         self.app.notify(str(exc), severity="error", timeout=10)
 
     def update_connection_status(self, check=False):
@@ -574,24 +560,29 @@ class WorkspaceScreen(Static):
         self.set_class(bool(self._active_jobs), "jobs-active")
 
     def on_job_started(self, event: JobStarted):
+        if event.run_id:
+            self._job_run_ids[event.job_id] = event.run_id
         self._active_jobs[event.job_id] = {
             "kind": event.kind,
             "label": event.label,
             "last_text": "Starting…",
         }
-        self.log_activity(f"Job #{event.job_id} started: {event.label}")
+        self.log_activity(f"Job #{event.job_id} started: {event.label}", run_id=event.run_id)
         self.update_busy_controls()
         self._refresh_jobs_panel()
 
     def start_job(self, kind: str, operation, context: dict | None = None, label: str = "") -> int:
         """Ask the app to start a background job and return the job_id."""
         label = label or kind
-        self.log_activity(f"{label.title()} started")
+        self.log_activity(f"{label.title()} started", run_id=(context or {}).get("run_id"))
         return self.app.start_job(kind, operation, context or {}, label=label)
 
     def job_progress(self, event: JobProgress):
         self.update_connection_status()
         data = event.payload
+        run_id = data.get("run_id") or self._job_run_ids.get(event.job_id)
+        if run_id:
+            self._job_run_ids[event.job_id] = run_id
         if data.get("event") == "activity":
             text = data["message"]
         elif data.get("event") in ("run_started", "message_scanned"):
@@ -607,11 +598,11 @@ class WorkspaceScreen(Static):
             text += f" · class: {data['class_id']}"
         if data.get("kind"):
             text += f" · action: {data['kind']}"
-        self.log_activity(text)
+        self.log_activity(text, run_id=run_id)
         if data.get("error"):
-            self.log_activity(data["error"], "ERROR")
+            self.log_activity(data["error"], "ERROR", run_id=run_id)
         for warning in data.get("warnings", []):
-            self.log_activity(warning, "WARN")
+            self.log_activity(warning, "WARN", run_id=run_id)
         # Update job progress text
         if event.job_id in self._active_jobs:
             self._active_jobs[event.job_id]["last_text"] = text
@@ -619,8 +610,11 @@ class WorkspaceScreen(Static):
 
     def job_finished(self, event: JobFinished):
         self._active_jobs.pop(event.job_id, None)
+        run_id = event.context.get("run_id") or self._job_run_ids.get(event.job_id)
+        if event.kind == "scan" and event.result is not None:
+            run_id = event.result.id
         if event.error:
-            self.error(event.error)
+            self.error(event.error, run_id=run_id)
         elif event.kind == "scan":
             self.account = event.result.account_alias
             self.refresh_runs()
@@ -630,12 +624,20 @@ class WorkspaceScreen(Static):
                 self.open_run(self.state.run.id)
             self.refresh_runs()
             report = event.result
+            failure_detail = report.get("errors", [])
+            failure_suffix = (
+                f" · {failure_detail[0]['action']}: {failure_detail[0]['error']}"
+                if failure_detail
+                else ""
+            )
             self.app.notify(
                 f"Apply: {report['succeeded']} succeeded · {report['failed']} failed · "
-                f"{report['skipped']} skipped" + (" · stopped" if report.get("stopped") else "")
+                f"{report['skipped']} skipped"
+                + (" · stopped" if report.get("stopped") else "")
+                + failure_suffix
             )
         if not event.error:
-            self.log_activity(f"Job #{event.job_id} ({event.kind}) completed")
+            self.log_activity(f"Job #{event.job_id} ({event.kind}) completed", run_id=run_id)
             if event.kind == "scan":
                 skip_info = (
                     f" ({event.result.skipped_count} skipped)"
@@ -644,15 +646,18 @@ class WorkspaceScreen(Static):
                 )
                 skip_mode = "yes" if getattr(event.result, "skip_processed", False) else "no"
                 self.log_activity(
-                    f"Scan status: {event.result.status}; {len(event.result.messages)} emails saved{skip_info} · skip emails: {skip_mode} · run {event.result.id[:8]}"
+                    f"Scan status: {event.result.status}; {len(event.result.messages)} emails saved{skip_info} · skip emails: {skip_mode} · run {event.result.id[:8]}",
+                    run_id=event.result.id,
                 )
             elif event.kind == "apply":
                 self.log_activity(
                     f"Apply result: {event.result['succeeded']} succeeded; "
-                    f"{event.result['failed']} failed; {event.result['skipped']} skipped"
+                    f"{event.result['failed']} failed; {event.result['skipped']} skipped",
+                    run_id=run_id,
                 )
             for error in getattr(event.result, "errors", []):
-                self.log_activity(error, "ERROR")
+                self.log_activity(error, "ERROR", run_id=run_id)
+        self._job_run_ids.pop(event.job_id, None)
         self.update_busy_controls()
         self._refresh_jobs_panel()
         if event.kind == "full text":
@@ -783,7 +788,9 @@ class WorkspaceScreen(Static):
             self.open_run(run_id)
             self.refresh_runs()
             self.app.notify(f"{len(actions)} review decisions saved")
-            self.log_activity(f"{len(actions)} actions {approval.value}; review saved")
+            self.log_activity(
+                f"{len(actions)} actions {approval.value}; review saved", run_id=run_id
+            )
         except InboxedError as exc:
             self.error(exc)
 
@@ -818,7 +825,8 @@ class WorkspaceScreen(Static):
                         run.id, message.ref.message_id, result, account_alias=account_alias
                     )
                     self.log_activity(
-                        f"Class edited for email {message.ref.message_id[:16]}"
+                        f"Class edited for email {message.ref.message_id[:16]}",
+                        run_id=run.id,
                     )
                     self.open_run(run.id)
                     self.refresh_runs()

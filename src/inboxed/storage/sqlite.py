@@ -32,14 +32,15 @@ class SQLiteRunRepository:
     def _initialize(self):
         with self._database() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise InboxedError(f"Unsupported database schema version: {version}")
-            if version != 2:
+            if version != 3:
                 # SQLite DDL needs an explicit transaction so interruption cannot
                 # leave a new schema version without its encryption metadata row.
                 db.execute("BEGIN IMMEDIATE")
                 self._schema(db)
-                db.execute("INSERT INTO run_storage VALUES (1, ?, NULL)", (uuid4().hex,))
+                if db.execute("SELECT 1 FROM run_storage WHERE id = 1").fetchone() is None:
+                    db.execute("INSERT INTO run_storage VALUES (1, ?, NULL)", (uuid4().hex,))
             self._generation, self._encryption = self._state(db)
 
     @staticmethod
@@ -55,8 +56,16 @@ class SQLiteRunRepository:
             "CREATE TABLE IF NOT EXISTS run_storage "
             "(id INTEGER PRIMARY KEY CHECK(id = 1), generation TEXT NOT NULL, encryption TEXT)"
         )
+        log_check = " CHECK (substr(payload, 1, 1) = 'g')" if encrypted else ""
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS run_logs "
+            "(sequence INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE, "
+            f"payload TEXT NOT NULL{log_check})"
+        )
+        db.execute("CREATE INDEX IF NOT EXISTS run_logs_by_run ON run_logs(run_id, sequence)")
         # Old versions must refuse to open the new storage format.
-        db.execute("PRAGMA user_version = 2")
+        db.execute("PRAGMA user_version = 3")
 
     @staticmethod
     def _state(db):
@@ -135,6 +144,7 @@ class SQLiteRunRepository:
                     os.close(fd)
                     temporary = Path(name)
                     with closing(sqlite3.connect(temporary)) as target, target:
+                        target.execute("PRAGMA foreign_keys = ON")
                         self._schema(target, encrypted=cipher is not None)
                         target.execute(
                             "INSERT INTO run_storage VALUES (1, ?, ?)", (generation, metadata)
@@ -146,6 +156,14 @@ class SQLiteRunRepository:
                             target.execute(
                                 "INSERT INTO runs VALUES (?, ?, ?)",
                                 (run_id, created_at, self._encode(data, cipher)),
+                            )
+                        for sequence, run_id, payload in source.execute(
+                            "SELECT sequence, run_id, payload FROM run_logs ORDER BY sequence"
+                        ):
+                            entry = self._decode_log(payload)
+                            target.execute(
+                                "INSERT INTO run_logs(sequence, run_id, payload) VALUES (?, ?, ?)",
+                                (sequence, run_id, self._encode_log(entry, cipher)),
                             )
                 # All SQLite connections are closed before replacement (also on Windows).
                 with temporary.open("rb") as handle:
@@ -177,6 +195,7 @@ class SQLiteRunRepository:
         try:
             connection = sqlite3.connect(self.path, timeout=10)
             connection.execute("PRAGMA secure_delete = ON")
+            connection.execute("PRAGMA foreign_keys = ON")
             # Keep SQLite transient sorting data out of unencrypted temp files.
             connection.execute("PRAGMA temp_store = MEMORY")
             with connection:
@@ -215,6 +234,34 @@ class SQLiteRunRepository:
         except (InvalidToken, ValueError, KeyError, TypeError, UnicodeError) as exc:
             raise InboxedError("Saved run is damaged or could not be decrypted") from exc
         return data
+
+    @staticmethod
+    def _encode_log(entry: str, cipher: Fernet | None) -> str:
+        return cipher.encrypt(entry.encode("utf-8")).decode("ascii") if cipher else entry
+
+    def _decode_log(self, payload: str) -> str:
+        try:
+            if self.encrypted:
+                payload = self._cipher.decrypt(payload.encode("ascii")).decode("utf-8")
+            return payload
+        except (InvalidToken, ValueError, TypeError, UnicodeError) as exc:
+            raise InboxedError("Saved run log is damaged or could not be decrypted") from exc
+
+    def append_log(self, run_id: str, entry: str) -> None:
+        with self._connect() as db:
+            if not db.execute("SELECT 1 FROM runs WHERE id = ?", (run_id,)).fetchone():
+                raise InboxedError(f"Run not found: {run_id}")
+            db.execute(
+                "INSERT INTO run_logs(run_id, payload) VALUES (?, ?)",
+                (run_id, self._encode_log(entry, self._cipher)),
+            )
+
+    def list_logs(self, run_id: str) -> list[str]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT payload FROM run_logs WHERE run_id = ? ORDER BY sequence", (run_id,)
+            ).fetchall()
+        return [self._decode_log(payload) for (payload,) in rows]
 
     def save(self, run: Run) -> None:
         with self._connect() as db:

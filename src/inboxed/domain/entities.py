@@ -38,7 +38,6 @@ class ClassDefinition:
     cleanup: str = "none"
     allow_automation: bool = False
     confidence_threshold: float = 0.9
-    require_approval: bool = True
 
 
 @dataclass(frozen=True)
