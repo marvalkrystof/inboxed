@@ -23,7 +23,7 @@ class HelpScreen(Dialog):
                 "v: toggle email list/detail on narrow screens   l: toggle activity log   h: home\n"
                 "?: help   q: quit from any page   Ctrl+Q: quit while editing   Escape: close dialog\n\n"
                 "Approvals save immediately. Apply shows a separate confirmation.\n"
-                "Full text stays in memory. Add or edit an account in Accounts to sign in.",
+                "Full text stays in memory. Add or edit an account in Accounts to verify its connection.",
                 markup=False,
             )
             yield Button("Close", id="close-help")

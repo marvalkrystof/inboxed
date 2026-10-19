@@ -8,7 +8,12 @@ from inboxed.ports.mail_provider import InboxPage, ProviderCapabilities
 def settings(cleanup="trash", automatic=False):
     return Settings.model_validate(
         {
-            "accounts": {"personal": {"provider": "gmail"}},
+            "accounts": {
+                "personal": {
+                    "provider": "imap",
+                    "options": {"host": "imap.example.com", "username": "test@example.com"},
+                }
+            },
             "classes": [
                 {
                     "id": "promotions",
@@ -27,7 +32,7 @@ def settings(cleanup="trash", automatic=False):
 
 def email(identifier="1", body="A sale on bicycles!", labels=("INBOX",)):
     return EmailMessage(
-        MessageRef("gmail", "test@example.com", identifier),
+        MessageRef("imap", "test@example.com", identifier),
         "Shop <shop@example.com>",
         "Sale",
         body,
@@ -38,7 +43,7 @@ def email(identifier="1", body="A sale on bicycles!", labels=("INBOX",)):
 
 
 class FakeProvider:
-    name = "gmail"
+    name = "imap"
     capabilities = ProviderCapabilities()
 
     def __init__(self, messages=None):

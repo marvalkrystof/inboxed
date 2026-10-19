@@ -4,7 +4,7 @@
 
 # Inboxed
 
-CLI and TUI for classifying Gmail and IMAP protocol emails with local AI models (Ollama), generating topic tags, and reviewing label, archive, and trash actions before applying them.
+CLI and TUI for classifying email over IMAP with local AI models (Ollama), generating topic tags, and reviewing label, archive, and trash actions before applying them.
 
 [Website](https://inboxed.fyi/) · [Privacy policy](https://inboxed.fyi/privacy/) · [Terms of use](https://inboxed.fyi/terms/)
 
@@ -29,7 +29,6 @@ CLI and TUI for classifying Gmail and IMAP protocol emails with local AI models 
      ```
 
 3. **Mailbox Credentials**
-   - **Gmail**: Google OAuth 2.0 Desktop client bundled with the app.
    - **IMAP**: Server host, port, username, and password (or app password).
      - Missing destination folders are created automatically on Apply. **Accounts → Folders / routing** optionally lets you choose custom destinations. Folder moves remove messages from Inbox, including Gmail.
 
@@ -53,30 +52,22 @@ uv run inboxed init
 
 ## Authentication
 
-### Gmail
-
-In the TUI, **Accounts → Add account** handles Google sign-in and verifies access before
-saving. Gmail requests the permissions needed to read mail and Apply mailbox changes.
-For existing accounts that need renewed authorization, use **Edit selected → Save changes**.
-IMAP accounts likewise verify their configured credentials when added or edited.
+In the TUI, **Accounts → Add account** verifies your IMAP credentials and mailbox access
+before saving. Use **Edit selected → Save changes** to update an existing connection.
 
 ```sh
-# Read-only access (scanning and classification only)
+# Verify credentials and read access
 uv run inboxed auth --account personal
 
-# Write access (required to apply labels, archive, or trash)
+# Verify access for applying mailbox changes
 uv run inboxed auth --account personal --write
 ```
 
-Tokens are saved under the user data directory (`~/Library/Application Support/inboxed` on macOS).
+Configure your server and username in `config.toml`, then set the password environment
+variable or enter an app password in the account form. Passwords entered directly are
+stored in the configuration; prefer an environment variable.
 
-The app bundles its Google Desktop OAuth client, so individual users do not need a client JSON file
-or OAuth environment variables. Each user signs in to Google and grants Inboxed access. A Desktop
-OAuth client secret cannot be kept confidential in a desktop application. For general release,
-publish the OAuth consent screen and complete Google's verification for the Gmail scopes requested
-by the app.
-
-### Folder routing (Gmail and IMAP)
+### Folder routing
 
 Folder routing is the default; no folder setup or creation button is needed. Each class
 automatically uses a folder such as **Inboxed - Receipts**. It is created if missing when you
@@ -97,7 +88,7 @@ folder routing applies to classes with `cleanup = "none"`. Topic tags stay in lo
 run history in folder mode, rather than creating copies in multiple folders.
 
 Folder moves work through IMAP MOVE, or COPY plus UID EXPUNGE when UIDPLUS is available.
-Gmail uses its native label operations to add the destination and remove Inbox.
+Gmail over IMAP uses its native label operations to add the destination and remove Inbox.
 If the server supports neither safe method, Inboxed reports that moves are unsupported.
 IMAP moves require a Message-ID and a saved content fingerprint so retries can verify
 the destination. Apply reuses existing folders and creates missing destinations before
@@ -109,7 +100,7 @@ configure destinations directly:
 
 ```toml
 [accounts.personal]
-provider = "gmail" # or "imap", with its connection options below
+provider = "imap" # connection options are shown below
 organization = "folders"
 folder_routes = { receipts = "Finance/Receipts", work = "Projects", other = "" }
 # Unlisted classes use automatic folders. An empty string means Leave in Inbox.
@@ -119,6 +110,11 @@ Folder paths and hierarchy separators come from your server; select existing fol
 from the list when possible. Moving a message is separate from creating a folder.
 
 ### IMAP
+
+Only IMAP accounts are supported. For an existing configuration using another provider,
+replace its account section with the IMAP settings below and remove obsolete account fields.
+Start a new scan after changing the connection; saved runs retain their original provider
+and message identifiers.
 
 **Gmail with 2-Step Verification (2FA):** for IMAP password sign-in, use a
 [Google app password](https://support.google.com/accounts/answer/185833) instead of your
@@ -152,10 +148,10 @@ uv run inboxed auth --account personal --write
 ## Connection status
 
 The Workspace shows the selected account's connection status below the toolbar. Saved
-credentials are checked in the background without opening sign-in. After successful
+credentials are checked in the background. After successful
 verification, the indicator reads **Connected**; its tooltip shows the last verification
 time. Connections open on demand for mailbox operations. Adding an account handles
-sign-in or credential verification; failed setup keeps the form open without saving
+credential verification; failed setup keeps the form open without saving
 the account. Use **Accounts → Edit selected → Save changes** to refresh access.
 
 ## Saved run encryption
@@ -181,7 +177,7 @@ saved runs does not affect mail stored with your provider.
 Run contents use authenticated Fernet encryption with a key derived from the password using
 Argon2id (64 MiB, three passes). Email previews, senders, subjects, account details, decisions,
 and configuration snapshots are encrypted. Run IDs, creation times, and encryption metadata
-remain readable. Google OAuth token files and the separate configuration file are outside this
+remain readable. The separate configuration file and environment credentials are outside this
 feature; use operating-system disk encryption to protect them as well.
 
 Enabling encryption replaces the history database without keeping a plaintext backup. Existing
@@ -208,7 +204,7 @@ uv run --extra tui inboxed tui
   - Detail pane with on-demand full text (loads only when scrolling down or clicking the excerpt banner).
   - Background jobs monitor and live activity log.
 - **Runs (`2`)**: View historical runs and batch-delete local history.
-- **Accounts (`3`)**: Add or edit Gmail and IMAP accounts with sign-in and verification included. Removing an account also deletes all its saved runs and its local OAuth token.
+- **Accounts (`3`)**: Add or edit IMAP accounts with connection verification included. Removing an account also deletes all its saved runs.
 - **Settings (`4`)**: Choose installed Ollama models, edit local endpoints, and manage password encryption for saved runs.
 
 ### Selecting models
@@ -332,15 +328,14 @@ timeout = 120
 
 ## Project Structure
 
-The static project website lives in [`docs/`](docs/). See [the site publishing guide](docs/README.md)
-for GitHub Pages, Cloudflare DNS, and Google OAuth branding setup for `inboxed.fyi`.
+The static project website lives in [`docs/`](docs/) and is published at `inboxed.fyi` using GitHub Pages and Cloudflare DNS.
 
 ```
 src/inboxed/
 ├── domain/        # Entities (EmailMessage, MessageDecision, Action, Approval)
 ├── ports/         # Protocols (MailProvider, Classifier, TagGenerator, RunRepository)
 ├── services/      # Scanning, policy evaluation, review, and execution logic
-├── providers/     # Gmail and IMAP implementations
+├── providers/     # IMAP implementation
 ├── models/        # Ollama (Kev / chat) and Laya adapters
 ├── storage/       # SQLite run persistence
 ├── cli/           # Typer CLI commands and Rich terminal tables

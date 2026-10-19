@@ -45,7 +45,7 @@ class SettingsScreen(Static):
                     )
                 yield Static(
                     "Password protection for existing and future run history. Unlock once per "
-                    "session. A forgotten password cannot be recovered. Google tokens and "
+                    "session. A forgotten password cannot be recovered. Credentials and "
                     "configuration files are stored separately.",
                     id="run-encryption-help",
                 )

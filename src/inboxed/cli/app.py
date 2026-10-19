@@ -9,7 +9,6 @@ from platformdirs import user_data_path
 from inboxed import bootstrap
 from inboxed.config import load_settings, write_default_config
 from inboxed.domain.errors import InboxedError
-from inboxed.providers.gmail.auth import authenticate, token_path
 from inboxed.services.execution import ExecutionService
 from inboxed.services.scanning import ScanService
 
@@ -55,7 +54,9 @@ def encrypt_runs(ctx: typer.Context):
     repo = bootstrap.repository(ctx.obj.data_dir)
     if repo.encrypted:
         raise InboxedError("Run encryption is already enabled")
-    typer.echo("A forgotten password cannot be recovered. Google tokens are stored separately.")
+    typer.echo(
+        "A forgotten password cannot be recovered. Configuration and credentials are stored separately."
+    )
     password = typer.prompt(
         "New run history password", hide_input=True, confirmation_prompt=True, err=True
     )
@@ -119,22 +120,16 @@ def init(
 def auth(
     ctx: typer.Context,
     account: Annotated[str, typer.Option()] = "personal",
-    write: Annotated[bool, typer.Option(help="Authorize label and cleanup actions.")] = False,
+    write: Annotated[bool, typer.Option(help="Check access for applying mailbox changes.")] = False,
 ):
-    """Authorize access to an email account."""
+    """Verify IMAP credentials and mailbox access."""
     settings = load_settings(ctx.obj.config)
     entry = settings.accounts.get(account)
     if entry is None:
         raise InboxedError(f"Unknown account alias: {account}")
-    if entry.provider == "imap":
-        with bootstrap.provider_session(settings, account, ctx.obj.data_dir, write) as provider:
-            console.print(f"Connected to {provider.account_identity()}")
-            console.print(f"Capabilities: {provider.capabilities}")
-        return
-    if entry.provider != "gmail":
-        raise InboxedError("No auth command for this provider")
-    authenticate(token_path(ctx.obj.data_dir, account), write)
-    console.print(f"Authenticated {account} ({'write' if write else 'read-only'} access)")
+    with bootstrap.provider_session(settings, account, ctx.obj.data_dir, write) as provider:
+        console.print(f"Connected to {provider.account_identity()}")
+        console.print(f"Capabilities: {provider.capabilities}")
 
 
 @app.command()
@@ -191,7 +186,7 @@ def scan(
 @runs_app.command("list")
 @handled
 def list_runs(ctx: typer.Context, json_output: Annotated[bool, typer.Option("--json")] = False):
-    """List runs without connecting to Gmail or loading models."""
+    """List runs without connecting to the mail server or loading models."""
     rows = unlocked_repository(ctx).list_runs()
     if json_output:
         emit_json(rows)

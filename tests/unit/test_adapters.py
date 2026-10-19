@@ -10,56 +10,16 @@ from inboxed.config import Settings, TagConfig, load_settings, write_default_con
 from inboxed.domain.errors import ModelError
 from inboxed.domain.tags import normalize_tags
 from inboxed.models.ollama.tag_generator import OllamaTagGenerator
-from inboxed.providers.gmail.auth import save_credentials, token_path
-from inboxed.providers.gmail.parsing import parse_message
 from tests.helpers import email, settings
 
 
-def part(mime, text, **extra):
-    return {
-        "mimeType": mime,
-        "body": {"data": base64.urlsafe_b64encode(text.encode()).decode()},
-        **extra,
-    }
-
-
 class AdapterTests(unittest.TestCase):
-    def test_plain_text_preferred_and_attachments_omitted(self):
-        payload = {
-            "mimeType": "multipart/mixed",
-            "headers": [{"name": "Subject", "value": "=?utf-8?b?xIxlc2t5?="}],
-            "parts": [
-                part("text/html", "<p>html</p>"),
-                part("text/plain", "plain"),
-                part("text/plain", "secret attachment", filename="attachment.txt"),
-            ],
-        }
-        message = parse_message({"id": "1", "payload": payload, "labelIds": ["INBOX"]}, "account")
-        self.assertEqual(message.body, "plain")
-        self.assertEqual(message.subject, "Česky")
-        self.assertEqual(message.sender, "")
-
-    def test_html_fallback_excludes_scripts(self):
-        message = parse_message(
-            {
-                "id": "1",
-                "payload": part(
-                    "text/html",
-                    "<style>hidden</style><p>Hello &amp; welcome</p><script>bad()</script>",
-                ),
-            },
-            "account",
-        )
-        self.assertEqual(message.body, "Hello & welcome")
-        self.assertFalse(message.in_inbox)
-
-    def test_config_and_app_wide_google_oauth(self):
+    def test_config_classes(self):
         example = Path("config.example.toml")
         config = load_settings(example)
         self.assertIn("payslips", {c.id for c in config.classes})
         self.assertIn("mfa_codes", {c.id for c in config.classes})
         self.assertTrue(next(c for c in config.classes if c.id == "mfa_codes").require_approval)
-        self.assertIsNone(config.accounts["personal"].credentials_file)
         raw = settings().model_dump()
         raw["classes"].append(raw["classes"][0])
         with self.assertRaises(ValidationError):
@@ -75,27 +35,6 @@ class AdapterTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 write_default_config(target)
             self.assertEqual(target.read_text(), "user settings")
-
-    def test_czech_gmail_text_with_legacy_and_mislabeled_utf8_charsets(self):
-        text = "Výplatní páska: příloha obsahuje výplatní lístek a mzdu."
-        for encoding, declared in [
-            ("utf-8", "utf-8"),
-            ("iso-8859-2", "iso-8859-2"),
-            ("cp1250", "windows-1250"),
-            ("utf-8", "iso-8859-2"),
-            ("utf-8", "windows-1250"),
-        ]:
-            with self.subTest(encoding=encoding, declared=declared):
-                payload = {
-                    "mimeType": "text/plain",
-                    "headers": [
-                        {"name": "Content-Type", "value": f'text/plain; charset="{declared}"'}
-                    ],
-                    "body": {"data": base64.urlsafe_b64encode(text.encode(encoding)).decode()},
-                }
-                message = parse_message({"id": "1", "payload": payload}, "account")
-                self.assertEqual(message.body, text)
-                self.assertEqual(message.preview, text)
 
     def test_czech_imap_transfer_decoding_and_charsets(self):
         from email.message import EmailMessage
@@ -163,8 +102,6 @@ class AdapterTests(unittest.TestCase):
         with self.assertRaises(ModelError):
             OllamaTagGenerator("", "local", client=Client()).suggest(email(), [])
 
-
-
     def test_kev_rejects_unknown_class_nan_and_invalid_probabilities(self):
         from inboxed.models.ollama.kev_classifier import KevClassifier
 
@@ -184,17 +121,6 @@ class AdapterTests(unittest.TestCase):
             classifier = KevClassifier("http://localhost:11434", "kev:test", client=Client(answer))
             with self.assertRaises(ModelError):
                 classifier.classify(email(), settings().definitions())
-
-    def test_token_storage_and_alias_validation(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = token_path(Path(directory), "personal")
-            credentials = SimpleNamespace(to_json=lambda: '{"token":"test"}')
-            save_credentials(path, credentials)
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(path.read_text(), '{"token":"test"}')
-            self.assertFalse(path.with_suffix(".tmp").exists())
-            with self.assertRaises(Exception):
-                token_path(Path(directory), "../escape")
 
     def test_kev_classifier_injects_exemplars_into_state(self):
         from inboxed.models.ollama.kev_classifier import KevClassifier
@@ -265,7 +191,7 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(d["skipped_count"], 0)
 
         # Test with skipping used
-        r2 = Run("gmail", "user@gmail.com", {}, skip_processed=True, skipped_count=12)
+        r2 = Run("imap", "user@gmail.com", {}, skip_processed=True, skipped_count=12)
         self.assertTrue(r2.skip_processed)
         self.assertEqual(r2.skipped_count, 12)
         d2 = r2.to_dict()
@@ -279,7 +205,7 @@ class AdapterTests(unittest.TestCase):
 
         # Test backward compatibility when keys are absent in payload
         legacy_dict = {
-            "provider": "gmail",
+            "provider": "imap",
             "account": "user@gmail.com",
             "config": {},
             "messages": [],

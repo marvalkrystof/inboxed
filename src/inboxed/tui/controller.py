@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -9,8 +10,7 @@ from inboxed import bootstrap
 from inboxed.config import AccountConfig, Settings, load_settings, save_account_config
 from inboxed.domain.actions import ActionKind
 from inboxed.domain.entities import Run, now
-from inboxed.domain.errors import AuthenticationError, InboxedError, ProviderError
-from inboxed.providers.gmail.auth import authenticate, load_credentials, token_path
+from inboxed.domain.errors import InboxedError
 from inboxed.providers.imap.config import IMAPConfig
 from inboxed.services.execution import ExecutionService
 from inboxed.services.review import ReviewService
@@ -51,13 +51,6 @@ class TUIController:
         account = settings.accounts.get(alias)
         if account is None:
             return None
-        token_version = None
-        if account.provider == "gmail":
-            try:
-                stat = token_path(self.data_dir, alias).stat()
-                token_version = (stat.st_mtime_ns, stat.st_size)
-            except (OSError, InboxedError):
-                pass
         # Routing/model changes do not change the mailbox connection. Keep only
         # a fingerprint of connection settings, never another password copy.
         return hashlib.sha256(
@@ -65,8 +58,6 @@ class TUIController:
                 {
                     "provider": account.provider,
                     "options": account.options,
-                    "credentials_file": account.credentials_file,
-                    "token": token_version,
                 },
                 sort_keys=True,
             ).encode()
@@ -80,13 +71,6 @@ class TUIController:
             saved = self._connections.get(alias)
         if saved and saved[0] == key:
             return saved[1]
-        account = self.settings.accounts[alias]
-        if account.provider == "gmail":
-            try:
-                if not token_path(self.data_dir, alias).exists():
-                    return AccountConnection(status="disconnected")
-            except InboxedError:
-                return AccountConnection(status="disconnected")
         return AccountConnection()
 
     def forget_connection(self, alias: str):
@@ -143,7 +127,7 @@ class TUIController:
             yield provider
 
     def check_connection(self, alias: str):
-        """Verify saved credentials without opening a browser or requesting access."""
+        """Verify saved IMAP credentials and mailbox access."""
         settings = self.settings
         self._record_connection(settings, alias, AccountConnection(status="checking"))
         with self._mail_session(settings, alias) as provider:
@@ -151,7 +135,8 @@ class TUIController:
 
     def save_verified_account(self, path: Path, alias: str, account: dict, original=None):
         """Verify access first; only then add or update the account in configuration."""
-        token = token_path(self.data_dir, alias)  # Validate aliases before using local paths.
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", alias):
+            raise InboxedError("Account alias must use letters, numbers, underscores or hyphens")
         current = load_settings(path)
         existing = current.accounts.get(alias)
         if original is None and existing is not None:
@@ -159,41 +144,16 @@ class TUIController:
         if original is not None and existing != original:
             raise InboxedError("This account changed; reopen its settings before saving")
         entry = AccountConfig.model_validate(account)
-        if entry.provider == "imap":
-            IMAPConfig.model_validate(entry.options)
-        elif entry.provider != "gmail":
-            raise InboxedError("Provider must be gmail or imap")
+        IMAPConfig.model_validate(entry.options)
         data = current.model_dump()
         data["accounts"][alias] = entry.model_dump()
         candidate = Settings.model_validate(data)
-        if entry.provider == "gmail":
-            from google.auth.exceptions import GoogleAuthError
-
-            with self._connection_lock:
-                auth_lock = self._session_locks.setdefault(alias, Lock())
-            with auth_lock:
-                if original is None:
-                    authenticate(token, write=True)
-                else:
-                    try:
-                        load_credentials(token, write=True)
-                    except (ProviderError, GoogleAuthError, ValueError):
-                        authenticate(token, write=True)
-        try:
-            with self._mail_session(candidate, alias, write=True) as provider:
-                identity = provider.account_identity()
-        except AuthenticationError:
-            if entry.provider != "gmail":
-                raise
-            with auth_lock:
-                authenticate(token, write=True)
-            with self._mail_session(candidate, alias, write=True) as provider:
-                identity = provider.account_identity()
-        # Verification may take time, especially in the browser. Preserve edits
-        # made to other accounts/models and reject concurrent changes to this alias.
+        with self._mail_session(candidate, alias, write=True) as provider:
+            identity = provider.account_identity()
+        # Preserve other edits and reject concurrent changes to this alias.
         latest = load_settings(path)
         if latest.accounts.get(alias) != existing:
-            raise InboxedError("This account changed during sign-in; reopen its settings")
+            raise InboxedError("This account changed during verification; reopen its settings")
         save_account_config(
             path, alias, entry.model_dump(exclude_none=True), replace_existing=original is not None
         )
@@ -264,18 +224,6 @@ class TUIController:
         account = self.settings.accounts.get(account_alias)
         if account is None:
             raise InboxedError(f"Unknown account: {account_alias}")
-        if account.provider == "gmail":
-            if progress:
-                progress(
-                    {
-                        "event": "activity",
-                        "message": "Opening Google sign-in; waiting for browser authorization",
-                    }
-                )
-            with self._connection_lock:
-                auth_lock = self._session_locks.setdefault(account_alias, Lock())
-            with auth_lock:
-                authenticate(token_path(self.data_dir, account_alias), write)
         if progress:
             progress({"event": "activity", "message": f"Checking connection for {account_alias}"})
         with self._mail_session(

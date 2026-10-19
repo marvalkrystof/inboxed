@@ -10,10 +10,8 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.widgets import (
     Button,
     Input,
-    Label,
     RichLog,
     Select,
-    SelectionList,
     Static,
     TextArea,
 )
@@ -33,7 +31,6 @@ from inboxed.tui.messages import (
 from inboxed.tui.state import WorkspaceState, action_family, selected_action_ids
 from inboxed.tui.widgets.email_detail import EmailDetail
 from inboxed.tui.widgets.email_table import EmailTable
-from inboxed.tui.widgets.run_list import RunList
 
 from .apply import ApplyScreen
 from .bulk_review import BulkReviewScreen
@@ -488,7 +485,7 @@ class WorkspaceScreen(Static):
         elif connection.status == "checking" or self.account in self._checking_accounts:
             indicator.update("◌ Checking saved account connection…")
             indicator.set_classes("connection-checking")
-            detail = "Verifying saved credentials without opening a sign-in screen."
+            detail = "Verifying saved IMAP credentials and mailbox access."
         elif connection.status == "error":
             indicator.update(f"○ Connection failed · {connection.error}")
             indicator.set_classes("connection-error")
@@ -496,7 +493,7 @@ class WorkspaceScreen(Static):
         else:
             indicator.update("○ Not connected" if self.account else "No account selected")
             indicator.set_classes("connection-unknown")
-            detail = "Add an account, or edit and save this account in Accounts to sign in."
+            detail = "Add an account, or edit and save this account in Accounts to verify its connection."
         indicator.tooltip = detail
         accounts = getattr(self.app, "accounts", None)
         if accounts is not None and accounts.is_mounted:

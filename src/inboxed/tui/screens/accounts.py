@@ -10,7 +10,6 @@ from textual.widgets import Button, Input, Label, Select, Static
 
 from inboxed.config import load_settings, save_account_config
 from inboxed.domain.errors import InboxedError
-from inboxed.providers.gmail.auth import token_path
 from inboxed.providers.imap.config import IMAPConfig
 
 from .dialog import Dialog
@@ -26,7 +25,7 @@ class AccountEditScreen(Dialog):
 
     def compose(self) -> ComposeResult:
         account = self.account
-        options = account.options if account and account.provider == "imap" else {}
+        options = account.options if account else {}
         init_pwd = options.get("password") or ""
         init_env = options.get("password_env") or ""
         if not init_pwd and init_env:
@@ -46,23 +45,6 @@ class AccountEditScreen(Dialog):
             yield Label("Account name (used as its local alias)")
             yield Input(
                 self.alias or "", placeholder="personal", id="account-alias", disabled=bool(account)
-            )
-            yield Label("Provider")
-            yield Select(
-                [("Gmail API", "gmail"), ("IMAP", "imap")],
-                value=account.provider if account else "gmail",
-                allow_blank=False,
-                id="account-provider",
-                disabled=bool(account),
-            )
-            yield Vertical(
-                Label("Saving signs in to Google when needed and verifies mailbox access."),
-                Static(
-                    "Google will ask permission to read your mail, organize it into labels/folders, "
-                    "and move messages or move them to Trash.",
-                    markup=False,
-                ),
-                id="gmail-fields",
             )
             with Vertical(id="imap-fields"):
                 yield Label("IMAP server host")
@@ -100,7 +82,7 @@ class AccountEditScreen(Dialog):
                 yield Input(options.get("archive_folder") or "", id="imap-archive-folder")
                 yield Label("Trash folder (optional; blank discovers it automatically)")
                 yield Input(options.get("trash_folder") or "", id="imap-trash-folder")
-                yield Label("OAuth token environment variable (optional)")
+                yield Label("IMAP token environment variable (optional; supplied externally)")
                 yield Input(options.get("oauth_token_env") or "", id="imap-oauth-env")
                 yield Label("Connection timeout in seconds")
                 yield Input(str(options.get("timeout", 30)), type="number", id="imap-timeout")
@@ -117,17 +99,6 @@ class AccountEditScreen(Dialog):
         if not self.busy:
             self.dismiss(None)
 
-    def on_mount(self):
-        self.update_provider_fields(str(self.query_one("#account-provider", Select).value))
-
-    def on_select_changed(self, event: Select.Changed):
-        if event.select.id == "account-provider" and event.value is not Select.BLANK:
-            self.update_provider_fields(str(event.value))
-
-    def update_provider_fields(self, provider):
-        self.query_one("#gmail-fields").display = provider == "gmail"
-        self.query_one("#imap-fields").display = provider == "imap"
-
     def on_button_pressed(self, event: Button.Pressed):
         event.stop()
         if self.busy:
@@ -139,34 +110,28 @@ class AccountEditScreen(Dialog):
             return
         try:
             alias = self.query_one("#account-alias", Input).value.strip()
-            provider = str(self.query_one("#account-provider", Select).value)
-            if provider == "gmail":
-                account = {"provider": "gmail"}
-            else:
-                pwd_val = self.query_one("#imap-password", Input).value
-                env_val = self.query_one("#imap-password-env", Input).value.strip()
-                options = {
-                    "host": self.query_one("#imap-host", Input).value.strip(),
-                    "username": self.query_one("#imap-username", Input).value.strip(),
-                    "security": str(self.query_one("#imap-security", Select).value),
-                    "password": pwd_val if pwd_val else None,
-                    "password_env": env_val
-                    if env_val
-                    else ("INBOXED_IMAP_PASSWORD" if not pwd_val else None),
-                    "port": self.query_one("#imap-port", Input).value.strip() or None,
-                    "inbox_folder": self.query_one("#imap-inbox-folder", Input).value.strip(),
-                    "archive_folder": self.query_one("#imap-archive-folder", Input).value.strip()
-                    or None,
-                    "trash_folder": self.query_one("#imap-trash-folder", Input).value.strip()
-                    or None,
-                    "oauth_token_env": self.query_one("#imap-oauth-env", Input).value.strip()
-                    or None,
-                    "timeout": float(self.query_one("#imap-timeout", Input).value),
-                }
-                if options["port"] is not None:
-                    options["port"] = int(options["port"])
-                options = IMAPConfig.model_validate(options).model_dump(exclude_none=True)
-                account = {"provider": "imap", "options": options}
+            pwd_val = self.query_one("#imap-password", Input).value
+            env_val = self.query_one("#imap-password-env", Input).value.strip()
+            options = {
+                "host": self.query_one("#imap-host", Input).value.strip(),
+                "username": self.query_one("#imap-username", Input).value.strip(),
+                "security": str(self.query_one("#imap-security", Select).value),
+                "password": pwd_val if pwd_val else None,
+                "password_env": env_val
+                if env_val
+                else ("INBOXED_IMAP_PASSWORD" if not pwd_val else None),
+                "port": self.query_one("#imap-port", Input).value.strip() or None,
+                "inbox_folder": self.query_one("#imap-inbox-folder", Input).value.strip(),
+                "archive_folder": self.query_one("#imap-archive-folder", Input).value.strip()
+                or None,
+                "trash_folder": self.query_one("#imap-trash-folder", Input).value.strip() or None,
+                "oauth_token_env": self.query_one("#imap-oauth-env", Input).value.strip() or None,
+                "timeout": float(self.query_one("#imap-timeout", Input).value),
+            }
+            if options["port"] is not None:
+                options["port"] = int(options["port"])
+            options = IMAPConfig.model_validate(options).model_dump(exclude_none=True)
+            account = {"provider": "imap", "options": options}
             saved = (
                 self.account.model_dump(exclude_none=True)
                 if self.account
@@ -183,9 +148,7 @@ class AccountEditScreen(Dialog):
             for control in (*self.query(Button), *self.query(Input), *self.query(Select)):
                 control.disabled = True
             self.query_one("#account-form-error", Static).update(
-                "Verifying Google sign-in and mailbox access… Complete sign-in in your browser if prompted."
-                if provider == "gmail"
-                else "Verifying IMAP credentials and mailbox access…"
+                "Verifying IMAP credentials and mailbox access…"
             )
             self.verify_and_save(alias, saved)
         except (ValueError, InboxedError) as exc:
@@ -201,11 +164,11 @@ class AccountEditScreen(Dialog):
                 account,
                 self.account,
             )
-        except Exception as exc:  # noqa: BLE001 -- vendor sign-in errors stay in the setup form
+        except Exception as exc:  # noqa: BLE001 -- connection errors stay in the setup form
             self.query_one("#account-form-error", Static).update(
                 str(exc)
                 if isinstance(exc, (InboxedError, ValueError))
-                else "Could not complete sign-in or verify mailbox access. Check your credentials and try saving again."
+                else "Could not verify mailbox access. Check your credentials and try saving again."
             )
         else:
             self.dismiss(alias)
@@ -215,7 +178,6 @@ class AccountEditScreen(Dialog):
                 for control in (*self.query(Button), *self.query(Input), *self.query(Select)):
                     control.disabled = False
                 self.query_one("#account-alias", Input).disabled = bool(self.account)
-                self.query_one("#account-provider", Select).disabled = bool(self.account)
 
 
 class RemoveAccountScreen(Dialog):
@@ -227,7 +189,7 @@ class RemoveAccountScreen(Dialog):
         with Vertical(classes="dialog"):
             yield Static(f"Remove account {self.alias}?", classes="dialog-title")
             yield Static(
-                "This removes the account from config.toml and deletes its local OAuth token. "
+                "This removes the account from config.toml. "
                 "All saved runs for this account will also be deleted. "
                 "This does not delete emails from your mailbox or undo applied actions.",
                 markup=False,
@@ -264,7 +226,7 @@ class AccountsScreen(Static):
                     yield Button("Folders / routing", id="account-folders")
                     yield Button("Remove selected", id="remove-account", variant="error")
             yield Static(
-                "Adding an account signs in or verifies its credentials. Edit and save an account to refresh its access.",
+                "Adding an account verifies its IMAP credentials. Edit and save an account to refresh its access.",
                 id="account-help",
                 markup=False,
             )
@@ -296,14 +258,11 @@ class AccountsScreen(Static):
             summary.update("No accounts configured yet.")
             summary.tooltip = None
             return
-        if account.provider == "gmail":
-            detail = f"Gmail API · Google sign-in · {account.organization}"
-        else:
-            detail = (
-                f"IMAP · {account.options.get('username', '')}@{account.options.get('host', '')} · "
-                f"{account.options.get('security', 'ssl').upper()}"
-                f" · {account.organization}"
-            )
+        detail = (
+            f"IMAP · {account.options.get('username', '')}@{account.options.get('host', '')} · "
+            f"{account.options.get('security', 'ssl').upper()}"
+            f" · {account.organization}"
+        )
         connection = self.controller.connection_status(self.alias)
         status = {
             "connected": f"● Connected · {connection.identity.split('|', 1)[0]}",
@@ -381,8 +340,6 @@ class AccountsScreen(Static):
                 raise InboxedError(f"Unknown account: {alias}")
             deleted = self.controller.repository.delete_for_account(alias)
             save_account_config(self.config_path, alias, None)
-            token = token_path(self.controller.data_dir, alias)
-            token.unlink(missing_ok=True)
             self.controller.settings = load_settings(self.config_path)
             self.controller.forget_connection(alias)
             self.refresh_workspace_settings()

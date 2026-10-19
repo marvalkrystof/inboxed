@@ -160,7 +160,7 @@ def test_ciphertext_tampering_is_rejected(history):
 
 def test_encrypted_payload_cannot_be_swapped_to_another_run(history):
     repo, run = history
-    other = Run("gmail", "other@example.com", {})
+    other = Run("imap", "other@example.com", {})
     repo.save(other)
     repo.enable_encryption(PASSWORD)
     with sqlite3.connect(repo.path) as db:
@@ -172,7 +172,7 @@ def test_encrypted_payload_cannot_be_swapped_to_another_run(history):
 
 def test_legacy_database_and_wal_are_migrated_without_plaintext_sidecars(tmp_path):
     path = tmp_path / "runs.sqlite3"
-    run = Run("gmail", "sensitive@example.com", {"private": "hidden IMAP credential"})
+    run = Run("imap", "sensitive@example.com", {"private": "hidden IMAP credential"})
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE runs (id TEXT PRIMARY KEY, created_at TEXT, payload TEXT)")
         db.execute(
@@ -194,7 +194,7 @@ def test_legacy_database_and_wal_are_migrated_without_plaintext_sidecars(tmp_pat
 
 def test_interrupted_schema_upgrade_rolls_back(tmp_path):
     path = tmp_path / "runs.sqlite3"
-    run = Run("gmail", "existing@example.com", {})
+    run = Run("imap", "existing@example.com", {})
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE runs (id TEXT PRIMARY KEY, created_at TEXT, payload TEXT)")
         db.execute(

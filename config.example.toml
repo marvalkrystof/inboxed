@@ -1,6 +1,12 @@
-# Copy to config.toml and edit. Relative paths resolve against this file.
+# Copy to config.toml and set your IMAP server and username.
 [accounts.personal]
-provider = "gmail"
+provider = "imap"
+
+[accounts.personal.options]
+host = "imap.example.com" # Gmail: imap.gmail.com
+username = "you@example.com"
+security = "ssl"
+password_env = "INBOXED_IMAP_PASSWORD" # Use an app password when required by your provider.
 
 [classifier]
 backend = "kev" # kev (Ollama SystemOne)

@@ -1,6 +1,6 @@
-from pathlib import Path
-from contextlib import contextmanager
 from collections.abc import Callable
+from contextlib import contextmanager
+from pathlib import Path
 
 from inboxed.config import Settings
 from inboxed.domain.entities import Run
@@ -8,8 +8,6 @@ from inboxed.domain.errors import InboxedError
 from inboxed.ports.classifier import Classifier
 from inboxed.ports.mail_provider import MailProvider
 from inboxed.ports.tag_generator import TagGenerator
-from inboxed.providers.gmail.auth import load_credentials, token_path
-from inboxed.providers.gmail.provider import GmailProvider
 from inboxed.providers.imap.config import IMAPConfig
 from inboxed.providers.imap.provider import IMAPProvider
 from inboxed.storage.sqlite import SQLiteRunRepository
@@ -20,7 +18,7 @@ def imap_factory(account, data_dir, write):
     return IMAPProvider(IMAPConfig.model_validate(account.options), write=write)
 
 
-PROVIDERS: dict[str, Callable[..., MailProvider]] = {"gmail": GmailProvider, "imap": imap_factory}
+PROVIDERS: dict[str, Callable[..., MailProvider]] = {"imap": imap_factory}
 CLASSIFIERS: dict[str, Callable[..., Classifier]] = {}
 TAG_GENERATORS: dict[str, Callable[..., TagGenerator]] = {}
 
@@ -60,9 +58,7 @@ def build_provider(settings: Settings, alias: str, data_dir: Path, write=False) 
     factory = PROVIDERS.get(account.provider)
     if factory is None:
         raise InboxedError(f"Unknown provider: {account.provider}")
-    if account.provider != "gmail":
-        return factory(account, data_dir, write)
-    return factory(credentials=load_credentials(token_path(data_dir, alias), write=write))
+    return factory(account, data_dir, write)
 
 
 def run_settings(run: Run) -> Settings:

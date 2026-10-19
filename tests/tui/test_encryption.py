@@ -21,7 +21,7 @@ class EncryptionUITests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
         self.repo = SQLiteRunRepository(root / "runs.sqlite3")
-        self.run = Run("gmail", "private@example.com", settings().model_dump())
+        self.run = Run("imap", "private@example.com", settings().model_dump())
         self.repo.save(self.run)
         self.controller = TUIController(settings(), root, repository=self.repo)
         self.app = InboxedApp(self.controller)

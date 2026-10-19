@@ -77,7 +77,7 @@ class InboxedApp(App):
             self.notify("Wait for the encryption operation to finish before quitting")
             return
         if isinstance(self.screen, AccountEditScreen) and self.screen.busy:
-            self.notify("Wait for account sign-in or verification to finish before quitting")
+            self.notify("Wait for account verification to finish before quitting")
             return
         if isinstance(self.screen, QuitScreen):
             return

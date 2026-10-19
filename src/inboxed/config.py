@@ -36,11 +36,9 @@ class StrictModel(BaseModel):
 
 
 class AccountConfig(StrictModel):
-    provider: str = "gmail"
+    provider: Literal["imap"] = "imap"
     organization: Literal["labels", "folders"] = "folders"
     folder_routes: dict[str, str] = Field(default_factory=dict)
-    # Accepted for older configs; OAuth client configuration is app-wide now.
-    credentials_file: str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -246,18 +244,17 @@ def save_account_config(
             raise InboxedError(f"Unknown account: {alias}")
         if account is not None and alias in accounts and not replace_existing:
             raise InboxedError(f"Account already exists: {alias}")
-        if account is not None and account.get("provider") not in ("gmail", "imap"):
-            raise InboxedError("Provider must be gmail or imap")
+        if account is not None and account.get("provider", "imap") != "imap":
+            raise InboxedError("Provider must be imap")
         if account is not None:
             candidate = dict(parsed)
             candidate_accounts = dict(accounts)
             candidate_accounts[alias] = account
             candidate["accounts"] = candidate_accounts
             Settings.model_validate(candidate)
-            if account["provider"] == "imap":
-                from inboxed.providers.imap.config import IMAPConfig
+            from inboxed.providers.imap.config import IMAPConfig
 
-                IMAPConfig.model_validate(account.get("options", {}))
+            IMAPConfig.model_validate(account.get("options", {}))
 
         lines = source.splitlines(keepends=True)
         headers = re.compile(r"^\[{1,2}([^\]]+)\]{1,2}\s*(?:#.*)?$")
@@ -278,28 +275,25 @@ def save_account_config(
         if account is not None:
             retained.append("\n" if retained and not retained[-1].endswith("\n\n") else "")
             retained.append(f"[accounts.{alias}]\n")
-            retained.append(f"provider = {json.dumps(account['provider'])}\n")
+            retained.append(f"provider = {json.dumps(account.get('provider', 'imap'))}\n")
             retained.append(
                 f"organization = {json.dumps(account.get('organization', 'folders'))}\n"
             )
             retained.append(f"folder_routes = {_toml_value(account.get('folder_routes', {}))}\n")
-            if account.get("credentials_file"):
-                retained.append(f"credentials_file = {_toml_value(account['credentials_file'])}\n")
-            if account["provider"] != "gmail":
-                options = account.get("options", {})
-                retained.append(f"\n[accounts.{alias}.options]\n")
-                for key, value in options.items():
-                    if value is None:
-                        continue
-                    if isinstance(value, bool):
-                        serialized = str(value).lower()
-                    elif isinstance(value, (int, float)):
-                        serialized = str(value)
-                    elif isinstance(value, str):
-                        serialized = json.dumps(value, ensure_ascii=False)
-                    else:
-                        raise InboxedError(f"Unsupported account option: {key}")
-                    retained.append(f"{key} = {serialized}\n")
+            options = account.get("options", {})
+            retained.append(f"\n[accounts.{alias}.options]\n")
+            for key, value in options.items():
+                if value is None:
+                    continue
+                if isinstance(value, bool):
+                    serialized = str(value).lower()
+                elif isinstance(value, (int, float)):
+                    serialized = str(value)
+                elif isinstance(value, str):
+                    serialized = json.dumps(value, ensure_ascii=False)
+                else:
+                    raise InboxedError(f"Unsupported account option: {key}")
+                retained.append(f"{key} = {serialized}\n")
         updated = "".join(retained)
         parsed_updated = tomllib.loads(updated)
         if account is not None and alias not in parsed_updated.get("accounts", {}):
@@ -316,7 +310,15 @@ def save_account_config(
 
 def load_settings(path: Path) -> Settings:
     try:
-        settings = Settings.model_validate(tomllib.loads(path.read_text()))
+        raw = tomllib.loads(path.read_text())
+        for alias, account in raw.get("accounts", {}).items():
+            if isinstance(account, dict) and account.get("provider", "imap") != "imap":
+                raise InboxedError(
+                    f"Account {alias}: only IMAP is supported. Set provider = 'imap', remove "
+                    "obsolete account fields, and configure host, username and credentials "
+                    "in its options table. See config.example.toml."
+                )
+        settings = Settings.model_validate(raw)
         return settings
     except FileNotFoundError as exc:
         if path == Path("config.toml"):

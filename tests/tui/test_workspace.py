@@ -381,21 +381,21 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         from inboxed.services.scanning import ScanService
 
         m1 = EmailMessage(
-            MessageRef("gmail", "test@example.com", "processed1"),
+            MessageRef("imap", "test@example.com", "processed1"),
             "sender1@example.com",
             "Receipt already processed",
             "body",
             labels=("label-receipts",),
         )
         m2 = EmailMessage(
-            MessageRef("gmail", "test@example.com", "fresh1"),
+            MessageRef("imap", "test@example.com", "fresh1"),
             "sender2@example.com",
             "Fresh email 1",
             "body",
             labels=(),
         )
         m3 = EmailMessage(
-            MessageRef("gmail", "test@example.com", "fresh2"),
+            MessageRef("imap", "test@example.com", "fresh2"),
             "sender3@example.com",
             "Fresh email 2",
             "body",
@@ -441,14 +441,14 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         from inboxed.services.scanning import ScanService
 
         m1 = EmailMessage(
-            MessageRef("gmail", "test@example.com", "msg1"),
+            MessageRef("imap", "test@example.com", "msg1"),
             "sender1@example.com",
             "Subject 1",
             "body 1",
             labels=(),
         )
         m2 = EmailMessage(
-            MessageRef("gmail", "test@example.com", "msg2"),
+            MessageRef("imap", "test@example.com", "msg2"),
             "sender2@example.com",
             "Subject 2",
             "body 2",
@@ -490,7 +490,7 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         from inboxed.domain.entities import ClassificationResult, MessageDecision, MessageRef
         from inboxed.tui.state import Filters
 
-        ref = MessageRef("gmail", "test@example.com", "msg1")
+        ref = MessageRef("imap", "test@example.com", "msg1")
         msg_high = MessageDecision(ref, "a@b.com", "High conf", "")
         msg_high.classification = ClassificationResult("class1", 0.95, {}, "model")
 

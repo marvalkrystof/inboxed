@@ -126,7 +126,7 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             self.repository.delete_many([other.id, "missing"])
         self.assertEqual({row["id"] for row in self.repository.list_runs()}, ids)
 
-    async def test_add_and_remove_gmail_account_persists_and_preserves_other_settings(self):
+    async def test_add_and_remove_imap_account_persists_and_preserves_other_settings(self):
         async with self.app.run_test(size=(110, 38)) as pilot:
             await pilot.pause()
             await self._switch_tab(pilot, "accounts")
@@ -134,6 +134,8 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             # self.app.screen is now the AccountEditScreen modal
             self.app.screen.query_one("#account-alias").value = "secondary"
+            self.app.screen.query_one("#imap-host").value = "imap.example.com"
+            self.app.screen.query_one("#imap-username").value = "secondary@example.com"
             await pilot.click("#save-account")
             await pilot.pause()
             self.assertIn("secondary", self.controller.settings.accounts)
@@ -157,7 +159,6 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             # self.app.screen is now the AccountEditScreen modal
             form = self.app.screen
             form.query_one("#account-alias").value = "imap_work"
-            form.query_one("#account-provider").value = "imap"
             await pilot.pause()
             form.query_one("#imap-host").value = "imap.example.com"
             form.query_one("#imap-username").value = "worker@example.com"
@@ -177,7 +178,6 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             form = self.app.screen
             form.query_one("#account-alias").value = "imap_direct"
-            form.query_one("#account-provider").value = "imap"
             await pilot.pause()
             form.query_one("#imap-host").value = "imap.example.com"
             form.query_one("#imap-username").value = "direct@example.com"
@@ -295,7 +295,7 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
         # Create unique second run
         self.provider.messages = {
             "unique_new_msg": EmailMessage(
-                MessageRef("gmail", "test@example.com", "unique_new_msg"),
+                MessageRef("imap", "test@example.com", "unique_new_msg"),
                 "Sender <sender@example.com>",
                 "Unique Second Run Subject",
                 "body",
