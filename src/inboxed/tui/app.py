@@ -5,6 +5,7 @@ from typing import ClassVar
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.theme import Theme
 from textual.widgets import Footer, TabbedContent, TabPane
 
 from inboxed.config import load_settings
@@ -40,6 +41,23 @@ class InboxedApp(App):
 
     def __init__(self, controller: TUIController, config_path: Path | None = None):
         super().__init__()
+        self.register_theme(
+            Theme(
+                name="inboxed",
+                primary="#a74d36",
+                secondary="#bd775e",
+                accent="#bd775e",
+                background="#191b18",
+                surface="#20221f",
+                panel="#272925",
+                foreground="#e9e6dd",
+                success="#a9d7b7",
+                warning="#eed18e",
+                error="#e8898b",
+                dark=True,
+            )
+        )
+        self.theme = "inboxed"
         self.controller = controller
         self.config_path = config_path
         self.quit_after_job = False
