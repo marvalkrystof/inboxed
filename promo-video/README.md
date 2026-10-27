@@ -55,7 +55,7 @@ npm run render:video
 npm run export:web
 ```
 
-`render:video` writes the master into the ignored `out/` directory. `export:web` remuxes it without re-encoding, creates the poster, copies the real unsubscribe capture, writes captions from the narration timings. Include the generated files under `docs/assets/` when committing the website. The published site needs no Node server or external video host.
+`render:video` writes the master into the ignored `out/` directory. `export:web` remuxes it without re-encoding, creates the poster, and writes captions from the narration timings. Include the generated files under `docs/assets/` when committing the website. The published site needs no Node server or external video host.
 
 ## English voiceover
 

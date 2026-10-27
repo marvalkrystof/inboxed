@@ -57,8 +57,7 @@
 
 
     <section class="unsubscribe-band" aria-labelledby="unsubscribe-title"><div class="container unsubscribe-layout">
-      <div><h2 id="unsubscribe-title">Keep the good mail.<br><em>Lose the noise.</em></h2><p>Find mailing lists in a saved scan, read an example email, and confirm the unsubscribe requests you want to send.</p><p class="section-note">Supports standard one-click unsubscribe. Other detected methods are shown with guidance.</p></div>
-      <figure class="product-shot"><div class="shot-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>inboxed · unsubscribe</span></div><img src="assets/unsubscribe.png" alt="Inboxed’s Unsubscribe tab showing mailing lists, supported methods, and controls to view an email or review requests" width="2050" height="829" loading="lazy" decoding="async"></figure>
+      <h2 id="unsubscribe-title">Keep the good mail.<br><em>Lose the noise.</em></h2><div><p>Find mailing lists in a saved scan, read an example email, and confirm the unsubscribe requests you want to send.</p><p class="section-note">Supports standard one-click unsubscribe. Other detected methods are shown with guidance.</p></div>
     </div></section>
 
     <section class="section container" id="features" aria-labelledby="features-title">
@@ -85,12 +84,11 @@
 
 <span class="cli-prompt">$</span> inboxed settings
 <span class="cli-result">✓ Local model · credentials redacted</span></code></pre>
-        <p class="cli-caption">Example session.</p>
       </div>
     </section>
 
     <section class="start-section container" id="start" aria-labelledby="start-title">
-      <div class="start-intro"><h2 id="start-title">Ready to<br><em>make room?</em></h2><p>You’ll need Python 3.13+, uv, an IMAP account, and a compatible model running locally in Ollama. The setup guide walks through connecting your account and choosing a model.</p><p class="section-note">Using Gmail with 2-Step Verification? Use an app password for IMAP.</p><a class="text-link" href="https://github.com/marvalkrystof/inboxed#quick-start">Open the setup guide →</a></div>
+      <div class="start-intro"><h2 id="start-title">Ready to<br><em>make room?</em></h2><p>You’ll need Python 3.13+, uv, an IMAP account, and a compatible model running locally in Ollama. The setup guide walks through connecting your account and choosing a model.</p><a class="text-link" href="https://github.com/marvalkrystof/inboxed#quick-start">Open the setup guide →</a></div>
       <div class="install-card"><div class="install-header"><span>GET INBOXED</span><button class="copy-button" type="button" data-copy-target="install-command">Copy commands</button></div><pre><code id="install-command">git clone https://github.com/marvalkrystof/inboxed.git
 cd inboxed
 uv sync --extra tui

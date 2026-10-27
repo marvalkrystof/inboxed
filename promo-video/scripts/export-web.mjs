@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -19,7 +19,6 @@ function ffmpeg(args) {
 // move the MP4 index before the media data for progressive web playback.
 ffmpeg(["-i", fileURLToPath(master), "-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-movflags", "+faststart", fileURLToPath(new URL("inboxed-demo.mp4", video))]);
 ffmpeg(["-ss", "19", "-i", fileURLToPath(master), "-frames:v", "1", "-q:v", "2", fileURLToPath(new URL("demo-poster.jpg", assets))]);
-copyFileSync(new URL("public/tui/unsubscribe.png", root), new URL("unsubscribe.png", assets));
 
 const narration = JSON.parse(readFileSync(new URL("scripts/narration.json", root), "utf8"));
 const timing = JSON.parse(readFileSync(new URL("public/voiceover/timing.json", root), "utf8"));
@@ -35,4 +34,4 @@ const cues = narration.scenes.map((scene, index) => {
   return `${index + 1}\n${timestamp(start)} --> ${timestamp(end)}\n${scene.text}\n`;
 });
 writeFileSync(new URL("inboxed-demo.en.vtt", video), "WEBVTT\n\n" + cues.join("\n"));
-console.log(`Exported 1080p MP4 (${(statSync(new URL("inboxed-demo.mp4", video)).size / 1024 / 1024).toFixed(1)} MiB), poster, screenshot, and English captions into docs/.`);
+console.log(`Exported 1080p MP4 (${(statSync(new URL("inboxed-demo.mp4", video)).size / 1024 / 1024).toFixed(1)} MiB), poster, and English captions into docs/.`);
