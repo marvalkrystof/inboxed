@@ -167,6 +167,49 @@ def parse_email(
         else:
             html.append(content)
     body = "\n".join(plain).strip() or html_text("\n".join(html))
+    unsubscribe_values = []
+    for value in message.get_all("List-Unsubscribe", []):
+        unsubscribe_values.extend(re.findall(r"<([^<>]+)>", str(value)))
+    post_values = [
+        str(value).strip().casefold() for value in message.get_all("List-Unsubscribe-Post", [])
+    ]
+    one_click = "list-unsubscribe=one-click" in post_values
+
+    def scheme(value):
+        match = re.match(r"^([A-Za-z][A-Za-z0-9+.-]*):", value)
+        return match[1].casefold() if match else ""
+
+    https_url = next(
+        (
+            value
+            for value in unsubscribe_values
+            if scheme(value) == "https" and re.match(r"^https://[^/?#]+", value, re.IGNORECASE)
+        ),
+        None,
+    )
+    endpoint = None
+    if unsubscribe_values:
+        candidate = unsubscribe_values[0]
+        match = re.match(r"^(https?://[^/?#]+[^?#]*|mailto:[^?#]*)", candidate, re.IGNORECASE)
+        endpoint = match[1].rstrip("?") if match else None
+    if one_click and https_url:
+        unsubscribe_type, unsubscribe_url = "one_click", https_url
+    elif unsubscribe_values:
+        schemes = {scheme(value) for value in unsubscribe_values}
+        has_web = "https" in schemes or "http" in schemes
+        if has_web and "mailto" in schemes:
+            unsubscribe_type, unsubscribe_url = "web + email", None
+        elif has_web:
+            unsubscribe_type, unsubscribe_url = "web", None
+        elif "mailto" in schemes:
+            unsubscribe_type, unsubscribe_url = "email", None
+        else:
+            unsubscribe_type, unsubscribe_url = "other", None
+    else:
+        unsubscribe_type, unsubscribe_url = "none", None
+    raw_list_id = str(message.get("List-ID", "")).strip()
+    list_match = re.search(r"<([^<>]+)>", raw_list_id)
+    list_id = (list_match[1] if list_match else raw_list_id).strip() or None
     labels = list(flags)
     if folder == inbox:
         labels.append("INBOX")
@@ -195,4 +238,8 @@ def parse_email(
         received,
         folder == inbox,
         tuple(attachments),
+        unsubscribe_type,
+        unsubscribe_url,
+        list_id,
+        endpoint,
     )

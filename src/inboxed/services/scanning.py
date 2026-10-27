@@ -137,6 +137,10 @@ class ScanService:
                             decision.ref = message.ref
                             decision.sender = message.sender
                             decision.subject = message.subject
+                            decision.unsubscribe_type = message.unsubscribe_type
+                            decision.unsubscribe_url = message.unsubscribe_url
+                            decision.list_id = message.list_id
+                            decision.unsubscribe_endpoint = message.unsubscribe_endpoint
                             preview_source = message.body or message.preview
                             decision.preview = preview_source[:SAVED_PREVIEW_LIMIT].rstrip()
                             if len(preview_source) > SAVED_PREVIEW_LIMIT:

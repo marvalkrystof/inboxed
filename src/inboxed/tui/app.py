@@ -18,20 +18,22 @@ from .screens.dialog import QuitScreen
 from .screens.encryption import RunPasswordScreen
 from .screens.runs import RunsScreen
 from .screens.settings import SettingsScreen
+from .screens.unsubscribe import UnsubscribeScreen
 from .screens.workspace import WorkspaceScreen
 
 
 class InboxedApp(App):
     TITLE = "Inboxed"
-    SUB_TITLE = "Classify · Review · Apply"
+    SUB_TITLE = "Classify · Review · Apply · Unsubscribe"
     CSS_PATH = "styles.tcss"
 
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("1", "switch_tab('workspace')", "Workspace"),
         Binding("2", "switch_tab('runs')", "Runs"),
-        Binding("3", "switch_tab('accounts')", "Accounts"),
-        Binding("4", "switch_tab('classes')", "Classes"),
-        Binding("5", "switch_tab('settings')", "Settings"),
+        Binding("3", "switch_tab('unsubscribe')", "Unsubscribe"),
+        Binding("4", "switch_tab('accounts')", "Accounts"),
+        Binding("5", "switch_tab('classes')", "Classes"),
+        Binding("6", "switch_tab('settings')", "Settings"),
         Binding("q", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit", show=False, priority=True),
     ]
@@ -49,6 +51,7 @@ class InboxedApp(App):
         self.accounts = AccountsScreen(controller, config_path)
         self.classes_screen = ClassesScreen(controller, config_path)
         self.settings_screen = SettingsScreen(controller, config_path)
+        self.unsubscribe_screen = UnsubscribeScreen(controller)
 
     def compose(self) -> ComposeResult:
         with TabbedContent(initial="workspace", id="main-tabs"):
@@ -56,6 +59,8 @@ class InboxedApp(App):
                 yield self.workspace
             with TabPane("Runs", id="runs"):
                 yield self.runs
+            with TabPane("Unsubscribe", id="unsubscribe"):
+                yield self.unsubscribe_screen
             with TabPane("Accounts", id="accounts"):
                 yield self.accounts
             with TabPane("Classes", id="classes"):
@@ -216,6 +221,8 @@ class InboxedApp(App):
 
     def on_job_started(self, event: JobStarted) -> None:
         self.workspace.on_job_started(event)
+        if getattr(self, "unsubscribe_screen", None) and self.unsubscribe_screen.is_mounted:
+            self.unsubscribe_screen.on_job_started(event)
         if getattr(self, "runs", None) and self.runs.is_mounted:
             self.runs.refresh_rows()
 
@@ -231,6 +238,8 @@ class InboxedApp(App):
     def on_job_finished(self, event: JobFinished) -> None:
         self._jobs.pop(event.job_id, None)
         self.workspace.job_finished(event)
+        if getattr(self, "unsubscribe_screen", None) and self.unsubscribe_screen.is_mounted:
+            self.unsubscribe_screen.on_job_finished(event)
         if getattr(self, "runs", None) and self.runs.is_mounted:
             self.runs.refresh_rows()
 

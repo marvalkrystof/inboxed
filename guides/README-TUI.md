@@ -10,6 +10,7 @@ The TUI is Inboxed's interactive terminal interface for scanning, reviewing, app
 - [Accounts](#accounts)
 - [Classes](#classes)
 - [Settings](#settings)
+- [Unsubscribe](#unsubscribe)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 
 ## Launch
@@ -60,11 +61,21 @@ Settings lets you select a compatible locally installed Ollama model and change 
 
 The **Encrypt saved runs** switch protects existing and future saved run contents and activity logs with a password. You can change the password from this tab. A forgotten password cannot be recovered. Configuration files and environment credentials are stored separately and are not encrypted by this setting.
 
+## Unsubscribe
+
+The Unsubscribe tab works with one selected saved run for an account. It groups messages by `List-ID` when available; otherwise, it groups matching senders and unsubscribe endpoint paths. The method column distinguishes standard one-click HTTPS from web, email, and other header options that Inboxed cannot currently perform. Highlight an item to see what its method usually requires.
+
+Highlight a subscription and choose **View email** (or press `v`) to inspect its message. Scroll through the saved excerpt to load the full message from the provider.
+
+Select supported subscriptions individually or choose **Select supported**, then review the confirmation dialog before sending. Inboxed sends one RFC 8058 POST per selected subscription and records whether the request was accepted. Acceptance does not guarantee that future messages will stop. Runs scanned before this feature do not contain unsubscribe metadata; scan again to populate the tab.
+
+One-click URLs may contain recipient-specific tokens and are saved with run data so they remain usable from that run. Run encryption protects these URLs when enabled.
+
 ## Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
-| `1`–`5` | Switch to Workspace, Runs, Accounts, Classes, or Settings |
+| `1`–`6` | Switch to Workspace, Runs, Unsubscribe, Accounts, Classes, or Settings |
 | `Space` | Select or deselect the highlighted email |
 | `/` | Search sender or subject |
 | `a` | Approve the highlighted email, or open bulk review |
@@ -78,3 +89,5 @@ The **Encrypt saved runs** switch protects existing and future saved run content
 | `q` | Quit from any page |
 | `Ctrl+Q` | Quit while editing a field |
 | `Esc` | Close the current dialog |
+| `Space` | Select or deselect a supported subscription in Unsubscribe |
+| `u` | Review and send selected unsubscribe requests |

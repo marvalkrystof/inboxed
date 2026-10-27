@@ -15,6 +15,7 @@ Inboxed scans email over IMAP, classifies messages with a local Ollama model, an
 - [Quick start](#quick-start)
 - [Usage guides](#usage-guides)
 - [Mailbox behavior](#mailbox-behavior)
+- [Unsubscribing](#unsubscribing)
 - [Local data and encryption](#local-data-and-encryption)
 - [Development](#development)
 - [License](#license)
@@ -69,6 +70,10 @@ The starter configuration is [`config.example.toml`](config.example.toml). `inbo
 By default, each class routes to an `Inboxed - <class label>` folder. Inboxed creates the destination automatically during Apply if it does not exist. An account can override destinations per class or leave selected classes in the Inbox. Archive and Trash class actions use the provider's corresponding folders. For Gmail over IMAP, folders are labels; moving to a class label also removes the Inbox label.
 
 Scans and Apply previews do not change the mailbox. Apply executes approved actions; automated actions require the class's `allow_automation = true` setting and an explicit `--auto` option in the CLI or checkbox in the TUI Apply preview.
+
+## Unsubscribing
+
+The TUI's Unsubscribe tab reviews list-unsubscribe methods found in a saved scan run. It supports bulk requests using the standard one-click HTTPS headers; other detected methods are displayed as unsupported with guidance. Each request requires confirmation. One-click URLs can contain recipient-specific tokens and are stored with the run; saved-run encryption protects them when enabled. A request accepted by the sender does not guarantee that later messages will stop.
 
 ## Local data and encryption
 

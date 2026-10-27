@@ -28,6 +28,10 @@ class EmailMessage:
     received_at: str = ""
     in_inbox: bool = True
     attachment_names: tuple[str, ...] = ()
+    unsubscribe_type: str = "none"
+    unsubscribe_url: str | None = None
+    list_id: str | None = None
+    unsubscribe_endpoint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,12 @@ class MessageDecision:
     error: str | None = None
     uncertain_input: bool = False
     manually_classified: bool = False
+    unsubscribe_type: str = "none"
+    unsubscribe_url: str | None = None
+    list_id: str | None = None
+    unsubscribe_status: str | None = None
+    unsubscribe_endpoint: str | None = None
+    unsubscribe_error: str | None = None
 
 
 @dataclass

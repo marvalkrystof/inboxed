@@ -15,6 +15,7 @@ from inboxed.providers.imap.config import IMAPConfig
 from inboxed.services.execution import ExecutionService
 from inboxed.services.review import ReviewService
 from inboxed.services.scanning import ScanService
+from inboxed.services.unsubscribe import send_one_click, subscription_key, subscription_label
 
 from .state import AccountConnection, ScanRequest
 
@@ -216,6 +217,44 @@ class TUIController:
                 skipped_count=sum(getattr(r, "skipped_count", 0) for r in loaded_runs),
             )
         return self.repository.load(run_id)
+
+    def unsubscribe(self, run_id: str, subscription_keys: list[tuple[str, ...]], progress=None):
+        """Unsubscribe once per selected subscription and save each result to its run."""
+        with self.repository.mutation_lock(run_id):
+            run = self.repository.load(run_id)
+            groups = {}
+            for message in run.messages:
+                key = subscription_key(message)
+                if key in subscription_keys and message.unsubscribe_type == "one_click":
+                    groups.setdefault(key, []).append(message)
+            results = {}
+            for key, messages in groups.items():
+                pending = [m for m in messages if m.unsubscribe_status != "sent"]
+                if not pending:
+                    results[key] = "Already unsubscribed"
+                    continue
+                if progress:
+                    progress(
+                        {
+                            "event": "activity",
+                            "message": f"Sending unsubscribe request: {subscription_label(pending[0])}",
+                            "run_id": run_id,
+                        }
+                    )
+                try:
+                    send_one_click(pending[0].unsubscribe_url or "")
+                except InboxedError as exc:
+                    for message in pending:
+                        message.unsubscribe_status = "failed"
+                        message.unsubscribe_error = str(exc)
+                    results[key] = str(exc)
+                else:
+                    for message in messages:
+                        message.unsubscribe_status = "sent"
+                        message.unsubscribe_error = None
+                    results[key] = "Request accepted"
+            self.repository.save(run)
+            return results
 
     def connect(self, account_alias: str, write: bool = False, progress=None) -> str:
         account = self.settings.accounts.get(account_alias)
