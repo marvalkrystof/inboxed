@@ -1,0 +1,33 @@
+{
+  "source": "Current InboxedApp with fictional providers",
+  "terminal": [
+    168,
+    34
+  ],
+  "captures": [
+    "workspace-empty",
+    "scan-dialog",
+    "workspace-scanned",
+    "email-detail",
+    "email-edit",
+    "messages-selected",
+    "messages-approved",
+    "apply-preview",
+    "apply-complete",
+    "classes",
+    "class-edit",
+    "class-edit-cleanup",
+    "class-create",
+    "runs",
+    "run-summary",
+    "run-activity",
+    "settings",
+    "encryption-dialog",
+    "settings-encrypted",
+    "settings-models",
+    "unsubscribe",
+    "unsubscribe-email",
+    "unsubscribe-selected",
+    "unsubscribe-confirm"
+  ]
+}

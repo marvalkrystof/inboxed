@@ -1,0 +1,71 @@
+{
+  "voice": "af_heart",
+  "speed": 1.03,
+  "fps": 30,
+  "totalFrames": 2310,
+  "scenes": [
+    {
+      "id": "00-problem",
+      "title": "The inbox problem",
+      "from": 0,
+      "durationInFrames": 240,
+      "text": "Newsletters, receipts, sign-in codes. Your inbox fills up fast, and the messages that matter get buried."
+    },
+    {
+      "id": "01-opening",
+      "title": "The Inboxed approach",
+      "from": 240,
+      "durationInFrames": 180,
+      "text": "Inboxed sorts the noise into clear suggestions. You decide what stays, and what goes."
+    },
+    {
+      "id": "02-scan",
+      "title": "Scan and workspace",
+      "from": 420,
+      "durationInFrames": 270,
+      "text": "Start with a scan. Inboxed groups your mail into categories. Open any message to read it. Your mailbox stays unchanged."
+    },
+    {
+      "id": "03-review",
+      "title": "Review and apply",
+      "from": 690,
+      "durationInFrames": 300,
+      "text": "Review the suggestions. Change a class, approve messages, and preview every action. Apply when you're ready. Missing folders are created automatically."
+    },
+    {
+      "id": "07-unsubscribe",
+      "title": "Unsubscribe",
+      "from": 990,
+      "durationInFrames": 270,
+      "text": "Stop the clutter coming back. Find mailing lists, read their emails, and review supported unsubscribe requests before sending."
+    },
+    {
+      "id": "04-classes",
+      "title": "Classes and automation",
+      "from": 1260,
+      "durationInFrames": 240,
+      "text": "Create your own classes. Choose cleanup rules and confidence thresholds. Turn on automation for selected classes."
+    },
+    {
+      "id": "05-cli",
+      "title": "Command line",
+      "from": 1500,
+      "durationInFrames": 270,
+      "text": "Prefer the command line? Scan, preview changes with a dry run, and inspect your settings, right from the terminal."
+    },
+    {
+      "id": "06-privacy",
+      "title": "Local history and privacy",
+      "from": 1770,
+      "durationInFrames": 330,
+      "text": "Your run history stays on your computer. Revisit past activity, protect saved runs with a password, and choose a compatible local model."
+    },
+    {
+      "id": "08-end",
+      "title": "End card",
+      "from": 2100,
+      "durationInFrames": 210,
+      "text": "Make room for what matters. Find Inboxed at inboxed dot F Y I."
+    }
+  ]
+}

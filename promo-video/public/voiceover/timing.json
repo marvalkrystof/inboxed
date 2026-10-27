@@ -1,0 +1,83 @@
+{
+  "engine": "Kokoro-82M-v1.0",
+  "dtype": "q8",
+  "device": "cpu",
+  "voice": "af_heart",
+  "speed": 1.03,
+  "sampleRate": 24000,
+  "seconds": 77,
+  "scenes": [
+    {
+      "id": "00-problem",
+      "from": 0,
+      "durationInFrames": 240,
+      "rawSeconds": 6.95,
+      "spokenSeconds": 6.95,
+      "tempo": 1
+    },
+    {
+      "id": "01-opening",
+      "from": 240,
+      "durationInFrames": 180,
+      "rawSeconds": 5.775,
+      "spokenSeconds": 5.331708333333333,
+      "tempo": 1.0794392523364487
+    },
+    {
+      "id": "02-scan",
+      "from": 420,
+      "durationInFrames": 270,
+      "rawSeconds": 7.975,
+      "spokenSeconds": 7.975,
+      "tempo": 1
+    },
+    {
+      "id": "03-review",
+      "from": 690,
+      "durationInFrames": 300,
+      "rawSeconds": 9.7,
+      "spokenSeconds": 9.329666666666666,
+      "tempo": 1.0374331550802138
+    },
+    {
+      "id": "07-unsubscribe",
+      "from": 990,
+      "durationInFrames": 270,
+      "rawSeconds": 8.25,
+      "spokenSeconds": 8.25,
+      "tempo": 1
+    },
+    {
+      "id": "04-classes",
+      "from": 1260,
+      "durationInFrames": 240,
+      "rawSeconds": 7.425,
+      "spokenSeconds": 7.329,
+      "tempo": 1.010204081632653
+    },
+    {
+      "id": "05-cli",
+      "from": 1500,
+      "durationInFrames": 270,
+      "rawSeconds": 7.275,
+      "spokenSeconds": 7.275,
+      "tempo": 1
+    },
+    {
+      "id": "06-privacy",
+      "from": 1770,
+      "durationInFrames": 330,
+      "rawSeconds": 9.375,
+      "spokenSeconds": 9.375,
+      "tempo": 1
+    },
+    {
+      "id": "08-end",
+      "from": 2100,
+      "durationInFrames": 210,
+      "rawSeconds": 4.95,
+      "spokenSeconds": 4.95,
+      "tempo": 1
+    }
+  ]
+}
