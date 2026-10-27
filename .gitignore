@@ -17,3 +17,13 @@ credentials*.json
 token*.json
 *.sqlite*
 .inboxed/
+
+# Local credentials, logs, and interactive session history
+.env
+.env.*
+!.env.example
+!.env.sample
+*.log
+.Rhistory
+.RData
+.Ruserdata
