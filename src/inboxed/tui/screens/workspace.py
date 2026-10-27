@@ -50,7 +50,6 @@ class WorkspaceScreen(Static):
         Binding("e", "edit_email", "Edit"),
         Binding("n", "scan", "Scan"),
         Binding("p", "apply", "Apply"),
-        Binding("b", "full_text", "Full text"),
         Binding("v", "toggle_detail", "View detail"),
         Binding("l", "toggle_log", "Log"),
         Binding("[", "toggle_sidebar", "Toggle sidebar", show=False),
